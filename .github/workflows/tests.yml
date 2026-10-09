@@ -1,0 +1,33 @@
+name: Agent harness tests
+on:
+  push:
+  pull_request:
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/russells-agent-sandbox
+          ref: v0.1.0
+          path: russells-agent-sandbox
+      - uses: astral-sh/setup-uv@v6
+      - run: mv russells-agent-sandbox ../russells-agent-sandbox
+      - run: uv sync
+      - run: uv run pytest
+  docker-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/russells-agent-sandbox
+          ref: v0.1.0
+          path: russells-agent-sandbox
+      - uses: astral-sh/setup-uv@v6
+      - run: mv russells-agent-sandbox ../russells-agent-sandbox
+      - run: uv sync
+      - run: bash scripts/bootstrap_sources.sh
+      - run: uv run pytest -m docker
