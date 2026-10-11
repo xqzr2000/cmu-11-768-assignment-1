@@ -1,6 +1,9 @@
 # CMU 11-768 Assignment 1 — Docker adaptation
 
-An **independent adaptation** of the CMU 11-768 Assignment 1 starter. The original authors and course instructions remain credited in `ASSIGNMENT.md`. This fork uses the OpenAI API and local Docker task sandboxes instead of Modal. The adaptation is not guaranteed to satisfy the original Modal-specific grading requirements.
+An **independent adaptation** of the CMU 11-768 Assignment 1 starter. The original authors and course instructions remain credited in `ASSIGNMENT.md`. 
+
+This fork uses the OpenAI API and local Docker task sandboxes instead of Modal. 
+
 
 ## One repository, two Python packages
 
