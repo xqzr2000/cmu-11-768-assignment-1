@@ -1,0 +1,28 @@
+name: CMU assignment + sandbox tests
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install both workspace packages
+        run: uv sync
+      - name: Run assignment and runtime unit tests
+        run: uv run pytest
+
+  docker-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install both workspace packages
+        run: uv sync
+      - name: Retrieve pinned chess app source
+        run: bash scripts/bootstrap_sources.sh
+      - name: Run sandbox and chess Docker integration tests
+        run: uv run pytest -m docker
