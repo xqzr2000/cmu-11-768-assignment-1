@@ -36,7 +36,6 @@ OBS_NO_LEGAL_RESULT ?= artifacts/part3-no-legal-moves-$(MODEL_TAG)-result.json
 OBS_LEGAL_RESULT ?= artifacts/part3-legal-moves-$(MODEL_TAG)-result.json
 
 setup:
-	bash scripts/bootstrap_sandbox.sh
 	uv sync
 	bash scripts/bootstrap_sources.sh
 	$(MAKE) verify-sources
@@ -47,11 +46,11 @@ doctor:
 verify-sources:
 	uv run python -c "from assignment.task import Task; from assignment.utils.image import verify_source; verify_source(Task.load('tasks/chess-terminal-move'))"
 
-# Fast and offline: runs unit tests without a Docker daemon or OpenAI API calls.
+# Fast and offline: runs BOTH harness and runtime unit tests (no Docker or OpenAI).
 test:
 	uv run pytest
 
-# Runs real containers and may pull images (requires Docker).
+# Runs harness and runtime Docker integration tests; may pull images.
 test-docker:
 	uv run pytest -m docker
 

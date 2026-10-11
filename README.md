@@ -1,69 +1,61 @@
-# cmu-11-768-assignment-1 — Docker Adaptation
+# CMU 11-768 Assignment 1 — Docker adaptation
 
-This is an **independent adaptation** of the CMU 11-768 Assignment 1 starter (original attribution and instructions are preserved in `ASSIGNMENT.md`). It uses OpenAI via the OpenAI SDK and the standalone `russells-agent-sandbox` repo rather than the original course Modal service. This adaptation is not guaranteed to meet Modal-specific assignment grading rules.
+An **independent adaptation** of the CMU 11-768 Assignment 1 starter. The original authors and course instructions remain credited in `ASSIGNMENT.md`. This fork uses the OpenAI API and local Docker task sandboxes instead of Modal. The adaptation is not guaranteed to satisfy the original Modal-specific grading requirements.
 
-## Repository architecture
+## One repository, two Python packages
 
-| Public repo | Purpose |
+| Path | Role |
 | --- | --- |
-| `cmu-11-768-assignment-1` (this one) | Agent code, OpenAI integration, chess / SWE-bench task definitions, evaluation |
-| `russells-agent-sandbox` | Disposable Docker images and containers, execution interface, private localhost ports |
+| `src/assignment/` | Agent, task, chess application integration, evaluation, `Environment` adapter |
+| `packages/agent-sandbox-runtime/` | Reusable Docker image builder and sandbox execution backend |
+| `.devcontainer/` | A **single** Codespaces / VS Code development environment with Docker-in-Docker |
+| `tasks/` | Chess and SWE-bench task descriptions and patches |
+| `tests/` | Harness tests; runtime tests also live under `packages/agent-sandbox-runtime/tests/` |
 
-The Python dependency retains the name **`agent-sandbox-runtime`**, despite the GitHub repository being called **`russells-agent-sandbox`**.
+The project is a single **uv workspace**. The root `pyproject.toml` resolves `agent-sandbox-runtime` directly from `packages/agent-sandbox-runtime`, with no external repository, release tag, GitHub authentication, or sibling folder dependency. A single `uv sync` installs both Python packages.
 
-The harness expects **a sibling checkout** called `../russells-agent-sandbox`. A one-time `make setup` fetches this from the same GitHub owner as `cmu-11-768-assignment-1`, or you can set `SANDBOX_RUNTIME_GIT_URL`. The runtime is linked through an editable local `uv` path dependency for development. The bootstrap script defaults to the runtime tag `v0.1.0`, which you must create after publishing the sandbox repository.
+**Execution:** Agent → `assignment.env.Environment` → `agent_sandbox_runtime.Sandbox` → local Docker engine → a disposable Docker task container. The sandbox Python *package* is not a separate server; the **actual command executes in Docker**, outside the agent's development Python environment. The OpenAI model endpoint handles inference only.
 
-## Open in Codespaces or local VS Code
+## Codespaces or local VS Code
 
-1. **Publish the sandbox repository first**, named `russells-agent-sandbox` under your GitHub user/org, and tag the initial release `v0.1.0`.
-2. Publish this repo as `cmu-11-768-assignment-1` under the same owner. In GitHub select **Code → Codespaces → Create codespace**. Or open it in VS Code and select **Dev Containers: Reopen in Container** (requires Docker Desktop/Engine and Dev Containers extension).
-3. The devcontainer provisions a dedicated Docker-in-Docker engine and executes `make setup`. It clones the sibling sandbox runtime if necessary, syncs Python dependencies with `uv`, and checks out the public chess-app at its exact base commit. Run `make setup` manually if automatic setup is interrupted.
-4. Set `OPENAI_API_KEY` as a **GitHub Codespaces secret** (already done for your account), and optionally `OPENAI_MODEL`. For local VS Code, put them in ignored `.env` created from `.env.example`. The default API base is `https://api.openai.com/v1` and the example model is `gpt-5-mini`.
-5. Verify with the commands below.
-
-```bash
-make sandbox-doctor  # Docker daemon connectivity
-make doctor          # Docker + source revision + OpenAI API configuration
-make test            # offline unit tests
-make test-docker     # real container and chess server integration (may pull/build images)
-```
-
-Try a single sandbox without an OpenAI key:
+1. Open this repository in **GitHub Codespaces** or open its folder in VS Code with Docker Desktop/Engine running and choose **Dev Containers: Reopen in Container**.
+2. The devcontainer installs `uv`, runs `make setup` (`uv sync` plus a checkout of the pinned upstream `chess_app` source), and prepares an ignored `.env` if it is absent. No second sandbox Codespace is required.
+3. In Codespaces, configure `OPENAI_API_KEY` under Codespaces secrets and grant this repository access; set `OPENAI_MODEL` as a secret or in ignored `.env`. For local VS Code, put both in `.env`. Never commit credentials.
+4. Check the setup:
 
 ```bash
-make sandbox-smoke
+make sandbox-doctor  # Docker reachable
+make sandbox-smoke   # starts a container, executes Python, cleans up
+make doctor          # API and chess source checks
+make test            # offline harness + sandbox runtime unit tests
+make test-docker     # live Docker tests; pulls/builds images and may be slow
 ```
 
-## Run the assignments
+You can run `make setup` manually if automatic post-create setup is interrupted. In a network-enabled environment, generate and commit the single root `uv.lock` using `uv lock` (then use `uv sync --locked` for reproducibility).
+
+## Run the assignment
 
 ```bash
 make run-code-agent
-make check-part1
+make check-part1           # requires artifacts/fix.patch
 make run-chess-sandbox
 make run-chess-agent
 make run-swebench-agent
-make check-swebench
+make check-swebench        # requires a generated SWE-bench patch
 make report-tokens
 make report-obs
 ```
 
-Additional experiment targets are listed in `Makefile`. Experiment calls to the OpenAI API may be billed; Docker local execution does not require Modal credit but consumes machine and Codespaces resources. `make check-part1` and `make check-swebench` require an agent-generated patch first.
+All agent model calls can incur OpenAI API usage charges. Codespaces usage may also be billed. No Modal subscription is required. See `Makefile`, `ASSIGNMENT.md`, and `MIGRATION.md` for additional context.
 
-## Runtime and compatibility
+## Operations, security, and limitations
 
-The sandbox backend starts local, throwaway Docker task containers with a bounded lifetime, CPU/memory/process caps, no host bind mounts, and ports bound only to localhost. Its Docker engine is separate from the development editor process in the default devcontainer. It is **not** equivalent to a hardened virtual machine. Avoid executing actively malicious code and keep Codespaces ports private.
+- The bundled runtime provides `uv run agent-sandbox doctor|smoke|list|cleanup`. `cleanup` removes managed Docker containers; use it carefully.
+- Sandboxes enforce CPU, memory, process, lifetime and localhost port limitations. They do **not** provide VM-grade isolation; avoid executing intentionally malicious code and do not publicly forward sandbox ports. Secrets are not passed into task containers by default.
+- The task's `chess_app/` source is fetched at the exact pinned base commit by `scripts/bootstrap_sources.sh`. It is **not bundled** in this repository, so that task requires one network-enabled setup operation.
+- Full SWE-bench compatibility is not established by unit tests. Published images may be large and `linux/amd64` only; ARM Macs may require emulation. Test on your actual Codespace or local environment.
+- The original CMU source ZIP did not include a redistribution license. **Review upstream rights before making this fork public.** The MIT license in `packages/agent-sandbox-runtime/LICENSE` applies to the runtime package only, not to CMU assignment material.
 
-SWE-bench published images may be x86_64-only, and image pulls can be large. On Apple Silicon, Docker Desktop may need amd64 emulation. Successful local Docker operation does not itself prove SWE-bench evaluation compatibility; run `make test-docker` and the appropriate evaluation for full verification.
+## Updating an existing GitHub repository by browser
 
-Before publishing publicly, **review redistribution permissions for the original CMU course content**. The original archive did not include a license, and this fork does not assert redistribution rights. Add a LICENSE only for material you are authorized to license; preserve upstream notices.
-
-### Repository setup notes
-
-- `uv.lock` must be regenerated (`uv lock`) after the runtime migration on a network-connected development machine; the original Modal-based lock was removed because it did not match this dependency graph. Commit both repos' generated lockfiles before using `uv sync --locked` in CI.
-- Each checkout is independent, but the harness must be checked out beside the runtime at the expected path. The path in `pyproject.toml` is tied to the checkout directory `../russells-agent-sandbox`; keep this checkout name or update the path and CI/bootstrap script together.
-- Source clone `chess_app/` is gitignored and downloaded by `scripts/bootstrap_sources.sh`; it is **not republished** as part of this repo.
-- A failed run may leave a container only until its bounded lifetime expires; use `uv run agent-sandbox list` or `uv run agent-sandbox cleanup` to inspect/remove the runtime's containers.
-
-## Origins
-
-Original assignment scaffold authors: Weiwei Sun and Saujas Vaduguru; course staff and additional attribution are preserved in `ASSIGNMENT.md`. The original course describes a Modal-based workflow; in this fork use `README.md` and `Makefile` for operational setup.
+Read `UPDATE_GITHUB.md` before uploading this ZIP; it explains hidden files, why the ZIP's containing folder must not be uploaded as a nested directory, and why the GitHub web uploader may leave obsolete files behind rather than deleting them.

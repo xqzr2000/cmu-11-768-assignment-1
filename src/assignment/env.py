@@ -1,6 +1,6 @@
 """Docker execution adapter for the CMU agent and evaluation harness.
 
-The implementation lives in the independent agent-sandbox-runtime repository.
+The implementation lives in packages/agent-sandbox-runtime in this repository.
 Only the assignment-specific conda activation and compatibility contract live
 here, making the backend replaceable without touching the agent logic.
 """

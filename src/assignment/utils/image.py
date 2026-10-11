@@ -1,4 +1,4 @@
-"""Build a task's testbed image using the independent Docker runtime.
+"""Build a task's testbed image using the bundled Docker runtime.
 
 The repository under test is copied in from `task.source` — normally the
 `chess_app/` submodule — rather than cloned inside the build. That keeps the
