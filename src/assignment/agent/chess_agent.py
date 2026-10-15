@@ -112,7 +112,8 @@ class ChessAgent(Agent):
         if programmatic_tools:
             self.tools.append(SIMULATE_MOVE_TOOL)
             self.tools.append(RUN_PYTHON_TOOL)
-
+        if self.skills:
+            self.tools.append(INVOKE_SKILL_TOOL)
         # run_python always executes in the sandbox, on the port the chess
         # server is listening on there.
         self.python_sandbox_port = python_sandbox_port
@@ -150,6 +151,15 @@ class ChessAgent(Agent):
             if include_legal_moves
             else "Infer a legal move from the board and FEN, then call play_move."
         )
+        if programmatic_tools and self.skills:
+            opening_instruction = (
+                "First call invoke_skill with name 'select-move'. "
+                "Follow the loaded skill instructions. "
+                "Use run_python to search candidate moves with simulate_move, "
+                "then call play_move exactly once inside Python to commit. "
+                "Black responds automatically. Do not wait for a human turn. "
+                "Continue until game_over is true."
+            )
         self.task_prompt = (
             f"Play this game as White. {opening_instruction}\n\n"
             f"{self.format_state(initial_state)}"

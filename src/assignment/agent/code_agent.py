@@ -227,7 +227,16 @@ class CodeAgent(Agent):
             # An argv list is meant to run without a shell.
             options["shell"] = False
 
+        # result = self.env.execute(command, **options)
+        print(f"[agent] executing: {command!r}", flush=True)
+
         result = self.env.execute(command, **options)
+
+        print(
+            f"[agent] command finished: "
+            f"returncode={result.get('returncode')}",
+            flush=True,
+        )
         output = {
             "output": result.get("output", ""),
             "returncode": result.get("returncode"),
