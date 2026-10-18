@@ -141,3 +141,71 @@ def test_real_git_patch_filters_tests_and_includes_new_code(tmp_path):
     assert 'AGENTS.md' not in patch
     assert '+x = 1' in patch
     assert '+new = True' in patch
+
+
+def test_strict_allowlist_rejects_forbidden_changes(tmp_path):
+    repo = tmp_path / "test-repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo,
+            capture_output=True, text=True, check=True
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+
+    folder = repo / "src/assignment/agent"
+    folder.mkdir(parents=True)
+
+    allowed = folder / "chess_agent.py"
+    forbidden = folder / "base.py"
+
+    allowed.write_text("value = 0\n")
+    forbidden.write_text("value = 0\n")
+
+    git("add", ".")
+    git("commit", "-q", "-m", "baseline")
+
+    # Simulate OpenCode editing both files.
+    allowed.write_text("value = 1\n")
+    forbidden.write_text("value = 1\n")
+
+    class LocalGitEnv:
+        cwd = "/testbed"
+
+        def execute(self, command, *, shell=False,
+                    cwd=None, env=None, timeout=None):
+            result = subprocess.run(
+                command, cwd=repo,
+                capture_output=True, text=True
+            )
+            return {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "output": result.stdout + result.stderr,
+            }
+
+    runner = OpenCodeRunner(
+        LocalGitEnv(),
+        model="opencode/mimo-v2.6-flash-free",
+        allowed_paths=(
+            "src/assignment/agent/chess_agent.py",
+        ),
+    )
+
+    # Forbidden edit must cause rejection.
+    with pytest.raises(RuntimeError, match="outside allowlist"):
+        runner._extract_patch()
+
+    # Restore forbidden file; retain allowed edit.
+    git("restore", "--", "src/assignment/agent/base.py")
+
+    # Allowed-only change must succeed.
+    patch = runner._extract_patch()
+    assert "chess_agent.py" in patch
+    assert "base.py" not in patch
+    assert "+value = 1" in patch

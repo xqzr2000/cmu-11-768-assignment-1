@@ -1,0 +1,12 @@
+{
+  "id": "chess-harness-improvement",
+  "repo": "https://github.com/xqzr2000/cmu-11-768-assignment-1",
+  "base_commit": "86cd65a22439f52d58545eda53fbf3c1be9bcb6e",
+  "source": "../../.private/chess-harness-base",
+  "dockerfile": "Dockerfile",
+  "problem_statement": "problem_statement.md",
+  "pins": [],
+  "editable_paths": [
+    "src/assignment/agent/chess_agent.py"
+  ]
+}

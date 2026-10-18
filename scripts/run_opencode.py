@@ -46,8 +46,17 @@ def main() -> int:
                 env, model=args.model, version=args.version).install())
         return 0
 
+    allowed_paths = None
     if args.task:
         task = Task.load(args.task)
+        spec = json.loads((task.root / "task.json").read_text())
+        if "editable_paths" in spec:
+            paths = spec["editable_paths"]
+            if not isinstance(paths, list) or not all(
+                isinstance(p, str) for p in paths
+            ):
+                raise ValueError("editable_paths must be strings")
+            allowed_paths = tuple(paths)
         image = build_testbed_image(task)
         issue, label, conda_env = task.problem_statement, task.id, None
     else:
@@ -67,7 +76,8 @@ def main() -> int:
                      runtime_timeout=max(args.timeout, 600),
                      deployment_timeout=max(args.timeout + 600, 1800)) as env:
         result = OpenCodeRunner(env, model=args.model, version=args.version,
-                               timeout=args.timeout, credential_env=credentials).run(issue)
+                               timeout=args.timeout, credential_env=credentials,
+                                allowed_paths=allowed_paths).run(issue)
 
     patch_file.parent.mkdir(parents=True, exist_ok=True)
     patch_file.write_text(result.patch)

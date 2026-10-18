@@ -129,7 +129,8 @@ class OpenCodeRunner:
     def __init__(self, environment: CommandEnvironment, *, model: str,
                  version: str = DEFAULT_OPENCODE_VERSION,
                  timeout: int = DEFAULT_TIMEOUT,
-                 credential_env: dict[str, str] | None = None):
+                 credential_env: dict[str, str] | None = None,
+                 allowed_paths: tuple[str, ...] | None = None):
         if not re.fullmatch(r'1\.\d+\.\d+', version):
             raise ValueError('Pin an OpenCode v1 release like 1.19.2')
         if not model or '/' not in model or any(x.isspace() for x in model):
@@ -141,6 +142,15 @@ class OpenCodeRunner:
         self.version = version
         self.timeout = timeout
         self.credential_env = dict(credential_env or {})
+        self.allowed_paths = (
+            None if allowed_paths is None
+            else frozenset(allowed_paths)
+        )
+        if self.allowed_paths is not None:
+            if not self.allowed_paths or any(
+                not safe_source_path(p) for p in self.allowed_paths
+            ):
+                raise ValueError("Invalid allowed_paths")
         disallowed = set(self.credential_env) - set(ALLOWED_CREDENTIALS)
         if disallowed:
             raise ValueError('Unsupported credential environment variable(s): ' + ', '.join(sorted(disallowed)))
@@ -162,9 +172,21 @@ class OpenCodeRunner:
     def _extract_patch(self) -> str:
         # Include untracked source files via intent-to-add; avoid accidental
         # capture of generated configs and test modifications.
-        tracked = self._git('diff', '--name-only', '-z', 'HEAD', '--').get('stdout', '').split('\0')
+        tracked = self._git('diff', '--name-only', '--no-renames', '-z', 'HEAD', '--').get('stdout', '').split('\0')
         untracked = self._git('ls-files', '--others', '--exclude-standard', '-z', '--').get('stdout', '').split('\0')
-        selected = sorted({p for p in tracked + untracked if safe_source_path(p)})
+        changed = {p for p in tracked + untracked if p}
+        if self.allowed_paths is not None:
+            forbidden = sorted(changed - self.allowed_paths)
+            if forbidden:
+                raise RuntimeError(
+                    "OpenCode changed files outside allowlist: "
+                    + ", ".join(forbidden)
+                )
+        selected = sorted(
+            p for p in changed
+            if safe_source_path(p)
+            and (self.allowed_paths is None or p in self.allowed_paths)
+        )
         if not selected:
             raise RuntimeError('OpenCode did not produce any allowable source changes')
         new_files = sorted({p for p in untracked if safe_source_path(p)})
