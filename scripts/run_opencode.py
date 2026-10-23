@@ -29,7 +29,7 @@ def main() -> int:
     group.add_argument('--instance', help='Vendored SWE-bench instance ID')
     group.add_argument('--smoke-install', action='store_true',
                        help='Install and print OpenCode version, without making an API request')
-    parser.add_argument('--model', default=os.getenv('OPENCODE_MODEL', 'openai/gpt-5-mini'),
+    parser.add_argument('--model', default=os.getenv('OPENCODE_MODEL', 'opencode/mimo-v2.6-flash-free'),
                         help='OpenCode provider/model ID')
     parser.add_argument('--version', default=DEFAULT_OPENCODE_VERSION,
                         help='Pinned OpenCode v1 version')
@@ -68,7 +68,11 @@ def main() -> int:
     log_file = args.trajectory or Path('artifacts') / f'opencode-{label}-run.json'
     # No secret is passed to Environment's constructor or Docker build. Only
     # the agent process receives the credential allowlist, when explicitly enabled.
-    credentials = credentials_from_host()
+    credentials = (
+        {}
+        if args.model == 'opencode/mimo-v2.6-flash-free'
+        else credentials_from_host()
+    )
     print('Image:', image, flush=True)
     print('Model:', args.model, flush=True)
     print('Credential variables provided:', ', '.join(sorted(credentials)) or '(none)', flush=True)
