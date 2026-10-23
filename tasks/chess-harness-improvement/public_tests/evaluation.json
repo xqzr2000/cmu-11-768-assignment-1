@@ -1,0 +1,13 @@
+{
+  "task_id": "chess-harness-improvement",
+  "test_patch": "test_patch.diff",
+  "test_cmd": "python -m pytest -q -rA tests/test_chess_tool_ordering.py",
+  "fail_to_pass": [
+    "tests/test_chess_tool_ordering.py::test_simulation_rejected_after_board_change[play_move]",
+    "tests/test_chess_tool_ordering.py::test_simulation_rejected_after_board_change[run_python]"
+  ],
+  "pass_to_pass": [
+    "tests/test_chess_tool_ordering.py::test_simulations_allowed_before_board_change",
+    "tests/test_chess_tool_ordering.py::test_guard_resets_on_next_response"
+  ]
+}
