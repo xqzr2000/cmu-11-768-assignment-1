@@ -1,0 +1,109 @@
+diff --git a/src/assignment/cli.py b/src/assignment/cli.py
+index cf1d9c9..1676fb2 100644
+--- a/src/assignment/cli.py
++++ b/src/assignment/cli.py
+@@ -6,10 +6,12 @@ import argparse
+ import json
+ import os
+ from pathlib import Path
++from typing import Any
+ 
+ from assignment.agent import (
+     ChessAgent,
+     CodeAgent,
++    StepLimitError,
+ )
+ from assignment.chess_sandbox import ChessSandbox
+ from assignment.task import Task
+@@ -179,6 +181,75 @@ def run_swebench_agent() -> None:
+     print(f"Trajectory: {trajectory}")
+ 
+ 
++def _final_step_observations(agent: Any) -> list[dict[str, Any]]:
++    """The last step's tool observations, in tool-call order.
++
++    The trajectory holds model-request prompt snapshots, and the final step's
++    tool results are never sent in a request, so the agent's interaction
++    history is the only record of them. Only the messages after the last
++    assistant action belong to that step; nothing is invented for calls that
++    produced no observation.
++    """
++
++    history = getattr(agent, "history", None) or []
++    last_action = max(
++        (
++            index
++            for index, message in enumerate(history)
++            if isinstance(message, dict) and message.get("role") == "assistant"
++        ),
++        default=-1,
++    )
++    if last_action < 0:
++        return []
++    trailing = [
++        message
++        for message in history[last_action + 1 :]
++        if isinstance(message, dict) and message.get("role") == "tool"
++    ]
++    call_order = {
++        call.get("id"): position
++        for position, call in enumerate(
++            history[last_action].get("tool_calls") or []
++        )
++        if isinstance(call, dict)
++    }
++    # Stable sort: observations answer calls in call order, and any left over
++    # (no matching call id) keep the order they have in the history.
++    trailing.sort(
++        key=lambda message: call_order.get(
++            message.get("tool_call_id"), len(call_order)
++        )
++    )
++    return [
++        {
++            "tool_call_id": message.get("tool_call_id"),
++            "content": message.get("content"),
++        }
++        for message in trailing
++    ]
++
++
++def _save_final_observations(trajectory: Path, agent: Any) -> None:
++    """Merge the final step's tool observations into the saved trajectory.
++
++    ``Agent.run`` writes the trajectory in its own save block, which must stay
++    untouched, so this only adds the field the prompt snapshots cannot carry.
++    """
++
++    data: dict[str, Any] = {}
++    if trajectory.is_file():
++        try:
++            saved = json.loads(trajectory.read_text())
++        except json.JSONDecodeError:
++            saved = None
++        if isinstance(saved, dict):
++            data = saved
++    data["final_observations"] = _final_step_observations(agent)
++    trajectory.parent.mkdir(parents=True, exist_ok=True)
++    trajectory.write_text(json.dumps(data, indent=2))
++
++
+ def run_chess_agent() -> None:
+     """Apply the Part 1 patch, then let ChessAgent play through the API."""
+ 
+@@ -227,7 +298,14 @@ def run_chess_agent() -> None:
+             programmatic_tools=args.programmatic_tools,
+             include_legal_moves=not args.omit_legal_moves,
+         )
+-        agent.run()
++        try:
++            agent.run()
++        except StepLimitError:
++            # The run's save block already wrote prompts, responses and
++            # compactions; the step that hit the limit has no following model
++            # request, so its tool observations are only in the history.
++            _save_final_observations(trajectory, agent)
++            raise
+ 
+     args.result.parent.mkdir(parents=True, exist_ok=True)
+     args.result.write_text(json.dumps(agent.last_state, indent=2))

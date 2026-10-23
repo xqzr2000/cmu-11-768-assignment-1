@@ -1,0 +1,12 @@
+{
+  "task_id": "chess-trajectory-logging",
+  "test_patch": "test_patch.diff",
+  "test_cmd": "python -m pytest -q -rA tests/test_chess_trajectory_logging.py",
+  "fail_to_pass": [
+    "tests/test_chess_trajectory_logging.py::test_step_limit_preserves_final_observations",
+    "tests/test_chess_trajectory_logging.py::test_text_only_step_has_no_final_observations"
+  ],
+  "pass_to_pass": [
+    "tests/test_chess_trajectory_logging.py::test_completed_game_preserves_existing_outputs"
+  ]
+}

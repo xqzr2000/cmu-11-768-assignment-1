@@ -1,0 +1,12 @@
+{
+  "experiment": "chess-step29",
+  "model": "gpt-5-mini",
+  "steps": 4,
+  "total_input_tokens": 5195,
+  "total_output_tokens": 290,
+  "final_agent_move": "f3e5",
+  "replayed_engine_response": "d5e5",
+  "final_status": "Your king is in check",
+  "final_fen": "rnb1kbnr/ppp2ppp/8/4q3/8/8/PPPP1PPP/RNBQKB1R w KQkq - 0 5",
+  "telemetry_issue": "Final tool observation is absent from saved trajectory because no next prompt was created."
+}
