@@ -39,3 +39,30 @@ the final step's tool observations on step-limit termination.
 
 Make the smallest correct change.
 Run relevant offline tests.
+
+## Feedback from OpenCode attempt 1
+
+The first candidate patch did not pass all regression tests.
+
+Evaluator results:
+- FAIL_TO_PASS: 1/2
+- PASS_TO_PASS: 1/1
+- RESOLVED: false
+
+Specific failure:
+The candidate reconstructed each final tool observation
+using only tool_call_id and content, discarding the
+original role field.
+
+Required correction:
+- Preserve the complete original tool-message dictionaries.
+- Each observation must retain role, tool_call_id, and content.
+- Preserve any additional existing fields.
+- Preserve the original observation ordering.
+- Select only observations belonging to the final action.
+- Do not confuse repeated tool_call_id values across steps.
+- Do not change Agent.run or its trajectory-saving block.
+- Do not change the regression tests.
+
+The previous candidate patch is not installed.
+Generate a new minimal solution against the original source.

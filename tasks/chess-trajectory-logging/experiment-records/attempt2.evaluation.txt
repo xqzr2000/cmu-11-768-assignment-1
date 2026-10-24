@@ -1,0 +1,6 @@
+Attempt 2 offline regression evaluation
+Patch: attempt2.patch
+Exit code: 0
+
+...                                                                      [100%]
+3 passed in 0.64s
