@@ -178,7 +178,8 @@ class ChessAgent(Agent):
         registered = {tool["function"]["name"] for tool in self.tools}
         # play_move and run_python can change the live board. The position the
         # model reasoned about is stale after the first of them, so only the
-        # first board-changing call in a response is executed.
+        # first board-changing call in a response is executed, and any
+        # simulate_move calls after it would inspect a stale position.
         board_call_made = False
         messages: list[dict[str, str]] = []
 
@@ -202,6 +203,13 @@ class ChessAgent(Agent):
                     f"This {name} call was not executed: only one board-changing "
                     "call runs per response, and the position has already "
                     "changed. Read the latest state and choose again."
+                )
+            elif name == "simulate_move" and board_call_made:
+                content = _chess_error(
+                    "This simulate_move call was not executed: the board "
+                    "already changed earlier in this response, so the "
+                    "position it would inspect is stale. Read the latest "
+                    "state and simulate again."
                 )
             elif name == "play_move":
                 board_call_made = True

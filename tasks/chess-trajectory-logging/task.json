@@ -1,0 +1,12 @@
+{
+  "id": "chess-trajectory-logging",
+  "repo": "https://github.com/xqzr2000/cmu-11-768-assignment-1",
+  "base_commit": "c2e7db78c7fb7a504c61f9d6d46a5cc4d9341369",
+  "source": "../../.private/chess-trajectory-base",
+  "dockerfile": "Dockerfile",
+  "problem_statement": "problem_statement.md",
+  "pins": [],
+  "editable_paths": [
+    "src/assignment/cli.py"
+  ]
+}

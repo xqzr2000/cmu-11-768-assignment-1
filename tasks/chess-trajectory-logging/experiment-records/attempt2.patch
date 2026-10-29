@@ -1,0 +1,91 @@
+diff --git a/src/assignment/cli.py b/src/assignment/cli.py
+index cf1d9c9..394674a 100644
+--- a/src/assignment/cli.py
++++ b/src/assignment/cli.py
+@@ -3,9 +3,11 @@
+ from __future__ import annotations
+ 
+ import argparse
++from copy import deepcopy
+ import json
+ import os
+ from pathlib import Path
++from typing import Any
+ 
+ from assignment.agent import (
+     ChessAgent,
+@@ -179,6 +181,59 @@ def run_swebench_agent() -> None:
+     print(f"Trajectory: {trajectory}")
+ 
+ 
++def _final_observations(agent: Any) -> list[dict[str, Any]]:
++    """The tool messages produced by the agent's last action, in call order.
++
++    They cannot be recovered from the saved prompt snapshots: the final action's
++    observations follow no later model request, so no snapshot contains them.
++    The live history does, and only the messages after the last assistant action
++    belong to it, which also keeps reused tool-call ids of earlier steps out.
++    """
++
++    history = getattr(agent, "history", None) or []
++    start = 0
++    for index, message in enumerate(history):
++        if isinstance(message, dict) and message.get("role") == "assistant":
++            start = index + 1
++    return [
++        deepcopy(message)
++        for message in history[start:]
++        if isinstance(message, dict) and message.get("role") == "tool"
++    ]
++
++
++def _record_final_observations(trajectory: Path, agent: Any) -> None:
++    """Add ``final_observations`` to the trajectory ``Agent.run`` just wrote.
++
++    The run's own saving block is left untouched: this only re-reads what it
++    produced and appends the one field it cannot know. Failures here are
++    reported rather than raised, so the outcome of the run itself still
++    decides the exit status.
++    """
++
++    data: dict[str, Any] = {}
++    if trajectory.is_file():
++        try:
++            saved = json.loads(trajectory.read_text(encoding="utf-8"))
++        except (OSError, json.JSONDecodeError):
++            saved = None
++        if isinstance(saved, dict):
++            data = saved
++
++    try:
++        data.setdefault("prompts", getattr(agent, "api_prompts", []))
++        data.setdefault("responses", getattr(agent, "api_responses", []))
++        data.setdefault("compactions", getattr(agent, "compaction_events", []))
++        data["final_observations"] = _final_observations(agent)
++        trajectory.parent.mkdir(parents=True, exist_ok=True)
++        trajectory.write_text(json.dumps(data, indent=2), encoding="utf-8")
++    except Exception as exc:
++        print(
++            f"[agent] could not record final observations: {type(exc).__name__}: {exc}",
++            flush=True,
++        )
++
++
+ def run_chess_agent() -> None:
+     """Apply the Part 1 patch, then let ChessAgent play through the API."""
+ 
+@@ -227,7 +282,13 @@ def run_chess_agent() -> None:
+             programmatic_tools=args.programmatic_tools,
+             include_legal_moves=not args.omit_legal_moves,
+         )
+-        agent.run()
++        try:
++            agent.run()
++        finally:
++            # `Agent.run` saves prompt snapshots, which by construction stop one
++            # step short of the final observations. Capture those here, whether
++            # the game ended or the step limit did.
++            _record_final_observations(trajectory, agent)
+ 
+     args.result.parent.mkdir(parents=True, exist_ok=True)
+     args.result.write_text(json.dumps(agent.last_state, indent=2))

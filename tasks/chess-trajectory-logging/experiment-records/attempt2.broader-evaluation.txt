@@ -1,0 +1,5 @@
+Attempt 2 broader offline evaluation
+Exit code: 0
+
+...............                                                          [100%]
+15 passed in 1.23s
