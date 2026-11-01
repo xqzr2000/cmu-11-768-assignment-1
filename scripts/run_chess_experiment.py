@@ -219,6 +219,7 @@ def execute_trial(
     return status
 
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment-id", required=True)
@@ -232,19 +233,61 @@ def main():
     environment.add_argument("--unpatched", action="store_true")
     environment.add_argument("--patch", type=Path)
 
-    parser.add_argument("--dry-run", action="store_true")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--execute", action="store_true")
 
     args = parser.parse_args()
 
-    if not args.dry_run:
-        parser.error("Live runs are not implemented; use --dry-run.")
+    if args.execute:
+        if args.trials != 1:
+            parser.error("Live execution supports one trial for now.")
+        if not args.unpatched:
+            parser.error("Live execution supports unpatched chess only.")
+        if Path.cwd().resolve() != ROOT:
+            parser.error("Run live experiments from the repository root.")
 
     try:
         plan = build_plan(args)
     except ValueError as exc:
         parser.error(str(exc))
 
-    print(json.dumps(plan, indent=2))
+    if args.dry_run:
+        print(json.dumps(plan, indent=2))
+        return
+
+    if not plan["working_tree_clean"]:
+        parser.error(
+            "Commit or discard working-tree changes before live execution."
+        )
+
+    trial = plan["trials"][0]
+    trajectory = Path(trial["trajectory"])
+    result = Path(trial["result"])
+    report = Path(trial["report"])
+    status_path = report.with_name(
+        f"{trial['trial_id']}-status.json"
+    )
+    plan_path = trajectory.parent / "plan.json"
+
+    outputs = (
+        trajectory, result, report, status_path, plan_path
+    )
+    if any(p.exists() for p in outputs):
+        parser.error("Experiment output already exists.")
+
+    plan["dry_run"] = False
+
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text(
+        json.dumps(plan, indent=2) + "\n"
+    )
+
+    status = execute_trial(plan, trial)
+    print(json.dumps(status, indent=2))
+
+    if status["outcome"] == "failed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

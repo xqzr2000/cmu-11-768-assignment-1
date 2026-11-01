@@ -142,7 +142,8 @@ def test_cli_dry_run(tmp_path):
         text=True,
     )
     assert rejected.returncode != 0
-    assert "Live runs are not implemented" in rejected.stderr
+    assert "--dry-run" in rejected.stderr
+    assert "--execute" in rejected.stderr
 
     # With --dry-run, a valid JSON plan is returned.
     completed = subprocess.run(

@@ -1,0 +1,231 @@
+"""Offline tests for chess experiment CLI orchestration."""
+
+import json
+import sys
+from pathlib import Path
+from runpy import run_path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "run_chess_experiment.py"
+main = run_path(str(SCRIPT))["main"]
+
+BASE_ARGS = [
+    "--experiment-id", "cli-test",
+    "--model", "gpt-5-mini",
+    "--step-limit", "3",
+    "--trials", "1",
+    "--unpatched",
+]
+
+
+def configure_cli(
+    monkeypatch,
+    tmp_path,
+    args,
+    *,
+    dirty=False,
+    outcome="completed",
+):
+    """Use real CLI logic but fake Git and trial execution."""
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys, "argv", [str(SCRIPT), *args]
+    )
+
+    namespace = main.__globals__
+    monkeypatch.setitem(namespace, "ROOT", tmp_path)
+
+    def fake_git(*arguments):
+        if arguments == ("status", "--porcelain"):
+            return " M tracked.py" if dirty else ""
+        if arguments == ("rev-parse", "HEAD"):
+            return "a" * 40
+        raise AssertionError(arguments)
+
+    monkeypatch.setitem(namespace, "git", fake_git)
+
+    calls = []
+
+    def fake_execute(plan, trial):
+        calls.append((plan, trial))
+        return {
+            "trial_id": trial["trial_id"],
+            "outcome": outcome,
+            "error": "Simulated failure" if outcome == "failed" else None,
+            "model_steps": 3,
+            "game_over": False,
+            "report_written": outcome != "failed",
+        }
+
+    monkeypatch.setitem(
+        namespace, "execute_trial", fake_execute
+    )
+
+    return calls
+
+
+def test_execute_dispatches_one_trial(
+    tmp_path, monkeypatch, capsys
+):
+    calls = configure_cli(
+        monkeypatch, tmp_path, BASE_ARGS + ["--execute"]
+    )
+
+    main()
+
+    assert len(calls) == 1
+    plan, trial = calls[0]
+
+    assert plan["dry_run"] is False
+    assert plan["working_tree_clean"] is True
+    assert plan["model"] == "gpt-5-mini"
+    assert plan["step_limit"] == 3
+    assert trial["trial_id"] == "trial-001"
+
+    plan_file = (
+        tmp_path / "artifacts/eval-harness/cli-test/plan.json"
+    )
+    saved = json.loads(plan_file.read_text())
+
+    assert saved["harness_commit"] == "a" * 40
+    assert saved["dry_run"] is False
+
+    status = json.loads(capsys.readouterr().out)
+    assert status["outcome"] == "completed"
+
+
+def test_step_limit_is_not_cli_failure(
+    tmp_path, monkeypatch, capsys
+):
+    calls = configure_cli(
+        monkeypatch,
+        tmp_path,
+        BASE_ARGS + ["--execute"],
+        outcome="step_limit",
+    )
+
+    main()
+
+    assert len(calls) == 1
+    status = json.loads(capsys.readouterr().out)
+    assert status["outcome"] == "step_limit"
+
+
+def test_failed_trial_exits_nonzero(
+    tmp_path, monkeypatch, capsys
+):
+    calls = configure_cli(
+        monkeypatch,
+        tmp_path,
+        BASE_ARGS + ["--execute"],
+        outcome="failed",
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+    assert len(calls) == 1
+
+    status = json.loads(capsys.readouterr().out)
+    assert status["outcome"] == "failed"
+
+
+def test_dirty_tree_rejected(
+    tmp_path, monkeypatch
+):
+    calls = configure_cli(
+        monkeypatch,
+        tmp_path,
+        BASE_ARGS + ["--execute"],
+        dirty=True,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 2
+    assert calls == []
+    assert not (
+        tmp_path / "artifacts/eval-harness/cli-test/plan.json"
+    ).exists()
+
+
+def test_existing_output_rejected(
+    tmp_path, monkeypatch
+):
+    calls = configure_cli(
+        monkeypatch,
+        tmp_path,
+        BASE_ARGS + ["--execute"],
+    )
+
+    plan_file = (
+        tmp_path / "artifacts/eval-harness/cli-test/plan.json"
+    )
+    plan_file.parent.mkdir(parents=True)
+    plan_file.write_text("DO NOT OVERWRITE")
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 2
+    assert calls == []
+    assert plan_file.read_text() == "DO NOT OVERWRITE"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [
+            "--experiment-id", "cli-test",
+            "--model", "gpt-5-mini",
+            "--trials", "2",
+            "--unpatched",
+            "--execute",
+        ],
+        [
+            "--experiment-id", "cli-test",
+            "--model", "gpt-5-mini",
+            "--patch", "fix.patch",
+            "--execute",
+        ],
+    ],
+)
+def test_unsupported_live_configuration(
+    tmp_path, monkeypatch, args
+):
+    calls = configure_cli(
+        monkeypatch, tmp_path, args
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 2
+    assert calls == []
+
+
+def test_dry_run_does_not_execute(
+    tmp_path, monkeypatch, capsys
+):
+    calls = configure_cli(
+        monkeypatch,
+        tmp_path,
+        BASE_ARGS + ["--dry-run"],
+    )
+
+    main()
+
+    plan = json.loads(capsys.readouterr().out)
+
+    assert plan["dry_run"] is True
+    assert len(plan["trials"]) == 1
+    assert calls == []
+    assert not (
+        tmp_path / "artifacts/eval-harness/cli-test/plan.json"
+    ).exists()
