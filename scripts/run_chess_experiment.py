@@ -92,6 +92,133 @@ def build_plan(args):
     }
 
 
+
+
+def execute_trial(
+    plan,
+    trial,
+    *,
+    sandbox_factory=None,
+    agent_factory=None,
+    observation_recorder=None,
+    evaluator=None,
+):
+    """Execute one isolated trial and preserve its outcome.
+
+    Dependencies may be replaced by fakes in offline tests.
+    """
+
+    if plan.get("dry_run") is not False:
+        raise ValueError("Live execution requires an explicit live plan.")
+
+    if not plan.get("working_tree_clean"):
+        raise ValueError("Live execution requires a clean working tree.")
+
+    if (
+        plan["environment"] != "original chess application, no patch"
+        or plan["patch_sha256"] is not None
+    ):
+        raise ValueError("Only unpatched trials are supported for now.")
+
+    trajectory = Path(trial["trajectory"])
+    result = Path(trial["result"])
+    report = Path(trial["report"])
+    status_path = report.with_name(
+        f"{trial['trial_id']}-status.json"
+    )
+
+    outputs = (trajectory, result, report, status_path)
+    if any(path.exists() for path in outputs):
+        raise FileExistsError("Trial output already exists; refusing overwrite.")
+
+    from assignment.agent.base import StepLimitError
+
+    if sandbox_factory is None:
+        from assignment.chess_sandbox import ChessSandbox
+        sandbox_factory = ChessSandbox
+
+    if agent_factory is None:
+        from assignment.agent import ChessAgent
+        agent_factory = ChessAgent
+
+    if observation_recorder is None:
+        from assignment.cli import _record_final_observations
+        observation_recorder = _record_final_observations
+
+    if evaluator is None:
+        from runpy import run_path
+        evaluator = run_path(
+            str(ROOT / "scripts" / "eval_chess_trajectory.py")
+        )["evaluate"]
+
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+
+    status = {
+        "trial_id": trial["trial_id"],
+        "outcome": "failed",
+        "error": None,
+        "model_steps": 0,
+        "game_over": None,
+        "report_written": False,
+    }
+
+    try:
+        with sandbox_factory(
+            patch=None,
+            deployment_timeout=600,
+        ) as sandbox:
+            agent = agent_factory(
+                environment=sandbox,
+                model=plan["model"],
+                logs_save_path=str(trajectory),
+                step_limit=plan["step_limit"],
+                auto_stop_environment=False,
+                programmatic_tools=plan["chess_agent"]["programmatic_tools"],
+                include_legal_moves=plan["chess_agent"]["include_legal_moves"],
+                skills_path=plan["chess_agent"]["skills_path"],
+            )
+
+            try:
+                agent.run()
+                status["outcome"] = (
+                    "completed" if agent.finished else "stopped"
+                )
+            except StepLimitError as exc:
+                status["outcome"] = "step_limit"
+                status["error"] = str(exc)
+            finally:
+                status["model_steps"] = agent.steps_taken
+                status["game_over"] = (
+                    (agent.last_state or {}).get("game_over")
+                )
+                observation_recorder(trajectory, agent)
+                result.parent.mkdir(parents=True, exist_ok=True)
+                result.write_text(
+                    json.dumps(agent.last_state or {}, indent=2) + "\n"
+                )
+
+        if not trajectory.is_file():
+            raise RuntimeError("Trajectory was not saved.")
+
+        metrics = evaluator(trajectory, result)
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            json.dumps(metrics, indent=2) + "\n"
+        )
+        status["report_written"] = True
+
+    except Exception as exc:
+        status["outcome"] = "failed"
+        status["error"] = f"{type(exc).__name__}: {exc}"
+
+    finally:
+        status_path.write_text(
+            json.dumps(status, indent=2) + "\n"
+        )
+
+    return status
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment-id", required=True)
