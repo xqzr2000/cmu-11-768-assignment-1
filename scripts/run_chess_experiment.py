@@ -220,6 +220,136 @@ def execute_trial(
 
 
 
+
+def execute_experiment(
+    plan,
+    plan_path,
+    *,
+    trial_executor=None,
+    aggregator=None,
+):
+    """Execute planned trials sequentially and aggregate results."""
+
+    from runpy import run_path
+
+    if plan.get("dry_run") is not False:
+        raise ValueError("Expected a live experiment plan.")
+
+    if plan.get("working_tree_clean") is not True:
+        raise ValueError("Live execution requires a clean working tree.")
+
+    trials = plan.get("trials", [])
+    if not trials or len(trials) != plan.get("sample_count"):
+        raise ValueError("Invalid experiment trial count.")
+
+    ids = [trial["trial_id"] for trial in trials]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Duplicate trial IDs.")
+
+    plan_path = Path(plan_path)
+    if not plan_path.is_file():
+        raise ValueError("Experiment plan must be saved first.")
+
+    saved_plan = json.loads(plan_path.read_text())
+    if saved_plan != plan:
+        raise ValueError("Saved plan differs from execution plan.")
+
+    summary_path = plan_path.with_name("summary.json")
+    if summary_path.exists():
+        raise FileExistsError("Experiment summary already exists.")
+
+    def resolve(value):
+        value = Path(value)
+        return value if value.is_absolute() else ROOT / value
+
+    # Check every output before starting the first trial.
+    expected_directory = plan_path.parent.resolve()
+    reserved_paths = set()
+
+    for trial in trials:
+        report_path = resolve(trial["report"])
+        status_path = report_path.with_name(
+            f"{trial['trial_id']}-status.json"
+        )
+
+        paths = [
+            resolve(trial["trajectory"]),
+            resolve(trial["result"]),
+            report_path,
+            status_path,
+        ]
+
+        for output in paths:
+            normalized = output.resolve()
+            if normalized.parent != expected_directory:
+                raise ValueError("Trial output outside experiment directory.")
+            if normalized in reserved_paths:
+                raise ValueError("Duplicate trial output path.")
+            if output.exists():
+                raise FileExistsError(
+                    f"Trial output already exists: {output}"
+                )
+            reserved_paths.add(normalized)
+
+    if trial_executor is None:
+        trial_executor = execute_trial
+
+    if aggregator is None:
+        aggregation_script = (
+            Path(__file__).resolve().parent
+            / "aggregate_chess_trials.py"
+        )
+        aggregator = run_path(str(aggregation_script))["aggregate"]
+
+    # Each trial is executed independently.
+    for trial in trials:
+        trial_id = trial["trial_id"]
+        status_path = resolve(trial["report"]).with_name(
+            f"{trial_id}-status.json"
+        )
+
+        try:
+            trial_executor(plan, trial)
+
+            if not status_path.is_file():
+                raise RuntimeError(
+                    "Trial executor did not write its status."
+                )
+
+        except Exception as exc:
+            # Preserve an unexpected orchestration failure.
+            # Do not overwrite a status that already exists.
+            if not status_path.exists():
+                status_path.parent.mkdir(
+                    parents=True, exist_ok=True
+                )
+
+                failure = {
+                    "trial_id": trial_id,
+                    "outcome": "failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "model_steps": 0,
+                    "game_over": None,
+                    "report_written": False,
+                }
+
+                status_path.write_text(
+                    json.dumps(failure, indent=2) + "\n"
+                )
+
+        # Continue to the next trial even after a failure.
+
+    summary = aggregator(plan_path, root=ROOT)
+
+    # Exclusive creation prevents overwriting a prior summary.
+    with summary_path.open("x") as output:
+        json.dump(summary, output, indent=2)
+        output.write("\n")
+
+    return summary
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment-id", required=True)
