@@ -1,0 +1,62 @@
+{
+  "experiment_id": "baseline-unpatched-002",
+  "description": "First automated three-step chess evaluation",
+  "source_commit": "1601d774509a04ee2a86d661ecbec9d745c7d4c6",
+  "model": "gpt-5-mini",
+  "environment": "original chess application, no patch",
+  "step_limit": 3,
+  "sample_count": 1,
+  "patch_sha256": null,
+  "chess_agent": {
+    "model": "gpt-5-mini",
+    "programmatic_tools": false,
+    "include_legal_moves": true,
+    "skills_path": null
+  },
+  "harness_developer": {
+    "tool": null,
+    "model": null
+  },
+  "execution": {
+    "trial_id": "trial-001",
+    "outcome": "step_limit",
+    "error": "Agent did not finish within 3 steps.",
+    "model_steps": 3,
+    "game_over": false,
+    "report_written": true
+  },
+  "evaluation": {
+    "model_steps": 3,
+    "play_move_attempts": 3,
+    "accepted_moves": 3,
+    "tool_errors": 0,
+    "unknown_outcomes": 0,
+    "recorded_action_tokens": 3754,
+    "compactions": 0,
+    "game_over": false,
+    "final_fen": "rnb1kbnr/ppp2ppp/8/3qp3/8/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4",
+    "moves": [
+      {
+        "step": 1,
+        "move": "e2e4",
+        "outcome": "accepted"
+      },
+      {
+        "step": 2,
+        "move": "g1f3",
+        "outcome": "accepted"
+      },
+      {
+        "step": 3,
+        "move": "e4d5",
+        "outcome": "accepted"
+      }
+    ]
+  },
+  "limitations": [
+    "Game did not finish",
+    "Single trial",
+    "No chess-strength measurement",
+    "Raw trajectory retained locally"
+  ]
+}
