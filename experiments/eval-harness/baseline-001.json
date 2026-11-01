@@ -1,0 +1,43 @@
+{
+  "experiment_id": "baseline-unpatched-001",
+  "description": "Three-step chess-agent smoke evaluation",
+  "source_commit": "b8dbc4fdde14c1e9076da9f9aab363a913a1112e",
+  "model": "gpt-5-mini",
+  "environment": "original chess application, no patch",
+  "step_limit": 3,
+  "sample_count": 1,
+  "evaluation": {
+    "model_steps": 3,
+    "play_move_attempts": 3,
+    "accepted_moves": 3,
+    "tool_errors": 0,
+    "unknown_outcomes": 0,
+    "recorded_action_tokens": 4272,
+    "compactions": 0,
+    "game_over": false,
+    "final_fen": "rnb1kbnr/ppp2ppp/8/3qp3/8/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4",
+    "moves": [
+      {
+        "step": 1,
+        "move": "e2e4",
+        "outcome": "accepted"
+      },
+      {
+        "step": 2,
+        "move": "g1f3",
+        "outcome": "accepted"
+      },
+      {
+        "step": 3,
+        "move": "e4d5",
+        "outcome": "accepted"
+      }
+    ]
+  },
+  "limitations": [
+    "Game did not finish",
+    "No chess-strength measurement",
+    "Single non-deterministic run",
+    "Raw trajectory retained locally, not in this file"
+  ]
+}
