@@ -370,8 +370,6 @@ def main():
     args = parser.parse_args()
 
     if args.execute:
-        if args.trials != 1:
-            parser.error("Live execution supports one trial for now.")
         if not args.unpatched:
             parser.error("Live execution supports unpatched chess only.")
         if Path.cwd().resolve() != ROOT:
@@ -391,34 +389,61 @@ def main():
             "Commit or discard working-tree changes before live execution."
         )
 
-    trial = plan["trials"][0]
-    trajectory = Path(trial["trajectory"])
-    result = Path(trial["result"])
-    report = Path(trial["report"])
-    status_path = report.with_name(
-        f"{trial['trial_id']}-status.json"
-    )
-    plan_path = trajectory.parent / "plan.json"
+    trials = plan["trials"]
+    output_dir = Path(trials[0]["trajectory"]).parent
+    plan_path = output_dir / "plan.json"
+    summary_path = output_dir / "summary.json"
 
-    outputs = (
-        trajectory, result, report, status_path, plan_path
-    )
-    if any(p.exists() for p in outputs):
+    # Preflight every planned output before execution.
+    outputs = [plan_path, summary_path]
+
+    for trial in trials:
+        report = Path(trial["report"])
+        status_path = report.with_name(
+            f"{trial['trial_id']}-status.json"
+        )
+
+        outputs.extend([
+            Path(trial["trajectory"]),
+            Path(trial["result"]),
+            report,
+            status_path,
+        ])
+
+    if any(path.exists() for path in outputs):
         parser.error("Experiment output already exists.")
 
     plan["dry_run"] = False
 
-    plan_path.parent.mkdir(parents=True, exist_ok=True)
-    plan_path.write_text(
-        json.dumps(plan, indent=2) + "\n"
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    status = execute_trial(plan, trial)
-    print(json.dumps(status, indent=2))
+    # Exclusive creation prevents overwriting an existing plan.
+    with plan_path.open("x") as output:
+        json.dump(plan, output, indent=2)
+        output.write("\n")
 
-    if status["outcome"] == "failed":
-        raise SystemExit(1)
+    if len(trials) == 1:
+        # Preserve existing single-trial behavior.
+        status = execute_trial(plan, trials[0])
+        print(json.dumps(status, indent=2))
 
+        if status["outcome"] == "failed":
+            raise SystemExit(1)
+    else:
+        # Execute and aggregate multiple independent trials.
+        summary = execute_experiment(plan, plan_path)
+        print(json.dumps(summary, indent=2))
+
+        unexpected_failures = sum(
+            count
+            for outcome, count in summary["outcomes"].items()
+            if outcome not in (
+                "completed", "step_limit", "stopped"
+            )
+        )
+
+        if unexpected_failures:
+            raise SystemExit(1)
 
 if __name__ == "__main__":
     main()

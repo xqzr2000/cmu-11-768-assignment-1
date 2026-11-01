@@ -184,13 +184,6 @@ def test_existing_output_rejected(
         [
             "--experiment-id", "cli-test",
             "--model", "gpt-5-mini",
-            "--trials", "2",
-            "--unpatched",
-            "--execute",
-        ],
-        [
-            "--experiment-id", "cli-test",
-            "--model", "gpt-5-mini",
             "--patch", "fix.patch",
             "--execute",
         ],
@@ -229,3 +222,105 @@ def test_dry_run_does_not_execute(
     assert not (
         tmp_path / "artifacts/eval-harness/cli-test/plan.json"
     ).exists()
+
+
+BATCH_ARGS = [
+    "--experiment-id", "cli-test",
+    "--model", "gpt-5-mini",
+    "--step-limit", "3",
+    "--trials", "3",
+    "--unpatched",
+    "--execute",
+]
+
+
+def test_batch_cli_dispatch(tmp_path, monkeypatch, capsys):
+    single_calls = configure_cli(
+        monkeypatch, tmp_path, BATCH_ARGS
+    )
+    batch_calls = []
+
+    def fake_batch(plan, plan_path):
+        batch_calls.append((plan, plan_path))
+        assert plan_path.is_file()
+
+        return {
+            "experiment_id": "cli-test",
+            "planned_trials": 3,
+            "outcomes": {"step_limit": 3},
+        }
+
+    monkeypatch.setitem(
+        main.__globals__, "execute_experiment", fake_batch
+    )
+
+    main()
+
+    assert single_calls == []
+    assert len(batch_calls) == 1
+
+    plan, plan_path = batch_calls[0]
+    assert plan["sample_count"] == 3
+    assert plan["dry_run"] is False
+
+    saved = json.loads(plan_path.read_text())
+    assert saved == plan
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["planned_trials"] == 3
+    assert summary["outcomes"]["step_limit"] == 3
+
+
+def test_batch_cli_failure_exit(tmp_path, monkeypatch, capsys):
+    configure_cli(monkeypatch, tmp_path, BATCH_ARGS)
+
+    def fake_batch(plan, plan_path):
+        return {
+            "experiment_id": "cli-test",
+            "planned_trials": 3,
+            "outcomes": {
+                "step_limit": 2,
+                "failed": 1,
+            },
+        }
+
+    monkeypatch.setitem(
+        main.__globals__, "execute_experiment", fake_batch
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["outcomes"]["failed"] == 1
+
+
+def test_batch_rejects_existing_later_output(
+    tmp_path, monkeypatch
+):
+    configure_cli(monkeypatch, tmp_path, BATCH_ARGS)
+
+    output = (
+        tmp_path
+        / "artifacts/eval-harness/cli-test"
+        / "trial-002-report.json"
+    )
+    output.parent.mkdir(parents=True)
+    output.write_text("DO NOT OVERWRITE")
+
+    def unexpected_batch(plan, plan_path):
+        pytest.fail("Batch execution must not start.")
+
+    monkeypatch.setitem(
+        main.__globals__, "execute_experiment",
+        unexpected_batch,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 2
+    assert output.read_text() == "DO NOT OVERWRITE"
+    assert not (output.parent / "plan.json").exists()
