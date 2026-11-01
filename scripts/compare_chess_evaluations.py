@@ -94,18 +94,27 @@ def compare(baseline_path, candidate_path):
         }
 
     mismatches = {}
+    missing_configuration = {}
 
     for field in CONFIG_FIELDS:
         old = baseline_data.get(field)
         new = candidate_data.get(field)
 
-        if old is not None and new is not None and old != new:
+        if old is None or new is None:
+            missing_configuration[field] = {
+                "baseline": old,
+                "candidate": new,
+            }
+        elif old != new:
             mismatches[field] = {
                 "baseline": old,
                 "candidate": new,
             }
 
     warnings = []
+
+    if missing_configuration:
+        warnings.append('Experimental configuration metadata is missing.')
 
     if mismatches:
         warnings.append(
@@ -126,6 +135,7 @@ def compare(baseline_path, candidate_path):
         "candidate": str(candidate_path),
         "metrics": comparison,
         "configuration_mismatches": mismatches,
+        "missing_configuration": missing_configuration,
         "warnings": warnings,
     }
 

@@ -63,6 +63,8 @@ def test_performance_deltas(tmp_path):
             tokens=1000,
         ),
         model="gpt-5-mini",
+        environment="unpatched",
+        step_limit=3,
         sample_count=5,
     )
 
@@ -76,6 +78,8 @@ def test_performance_deltas(tmp_path):
             game_over=True,
         ),
         model="gpt-5-mini",
+        environment="unpatched",
+        step_limit=3,
         sample_count=5,
     )
 
@@ -177,3 +181,40 @@ def test_cli_writes_comparison(tmp_path):
 
     assert output.exists()
     assert saved["metrics"]["accepted_moves"]["delta"] == 0
+
+
+def test_missing_configuration_detected(tmp_path):
+    report = make_report()
+
+    baseline = save(
+        tmp_path,
+        "baseline.json",
+        report,
+        model="gpt-5-mini",
+        environment="unpatched",
+        step_limit=3,
+        sample_count=5,
+    )
+
+    candidate = save(
+        tmp_path,
+        "candidate.json",
+        report,
+        environment="unpatched",
+        step_limit=3,
+        sample_count=5,
+    )
+
+    result = compare(baseline, candidate)
+
+    assert result["configuration_mismatches"] == {}
+    assert result["missing_configuration"] == {
+        "model": {
+            "baseline": "gpt-5-mini",
+            "candidate": None,
+        }
+    }
+    assert any(
+        "metadata is missing" in warning
+        for warning in result["warnings"]
+    )
