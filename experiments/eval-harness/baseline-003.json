@@ -1,0 +1,130 @@
+{
+  "experiment_id": "baseline-unpatched-003",
+  "description": "First automated three-trial chess baseline",
+  "source_commit": "24a03bcc74f514b297f05ecd2380d346dcc7113f",
+  "model": "gpt-5-mini",
+  "environment": "original chess application, no patch",
+  "step_limit": 3,
+  "sample_count": 3,
+  "patch_sha256": null,
+  "chess_agent": {
+    "model": "gpt-5-mini",
+    "programmatic_tools": false,
+    "include_legal_moves": true,
+    "skills_path": null
+  },
+  "harness_developer": {
+    "tool": null,
+    "model": null
+  },
+  "aggregate": {
+    "planned_trials": 3,
+    "reports_available": 3,
+    "report_coverage": 1.0,
+    "outcomes": {
+      "step_limit": 3
+    },
+    "summary": {
+      "mean_model_steps": 3,
+      "total_play_move_attempts": 9,
+      "total_accepted_moves": 9,
+      "total_tool_errors": 0,
+      "total_unknown_outcomes": 0,
+      "observed_move_acceptance_rate": 1.0,
+      "completed_games": 0,
+      "observed_game_completion_rate": 0.0,
+      "mean_recorded_action_tokens": 3628,
+      "token_usage_reports": 3
+    }
+  },
+  "trials": [
+    {
+      "trial_id": "trial-001",
+      "outcome": "step_limit",
+      "model_steps": 3,
+      "accepted_moves": 3,
+      "tool_errors": 0,
+      "recorded_action_tokens": 3696,
+      "game_over": false,
+      "final_fen": "rnb1kbnr/ppp2ppp/8/3qp3/8/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4",
+      "moves": [
+        {
+          "step": 1,
+          "move": "e2e4",
+          "outcome": "accepted"
+        },
+        {
+          "step": 2,
+          "move": "g1f3",
+          "outcome": "accepted"
+        },
+        {
+          "step": 3,
+          "move": "e4d5",
+          "outcome": "accepted"
+        }
+      ]
+    },
+    {
+      "trial_id": "trial-002",
+      "outcome": "step_limit",
+      "model_steps": 3,
+      "accepted_moves": 3,
+      "tool_errors": 0,
+      "recorded_action_tokens": 3626,
+      "game_over": false,
+      "final_fen": "rnb1kbnr/ppp2ppp/8/3qp3/8/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4",
+      "moves": [
+        {
+          "step": 1,
+          "move": "e2e4",
+          "outcome": "accepted"
+        },
+        {
+          "step": 2,
+          "move": "g1f3",
+          "outcome": "accepted"
+        },
+        {
+          "step": 3,
+          "move": "e4d5",
+          "outcome": "accepted"
+        }
+      ]
+    },
+    {
+      "trial_id": "trial-003",
+      "outcome": "step_limit",
+      "model_steps": 3,
+      "accepted_moves": 3,
+      "tool_errors": 0,
+      "recorded_action_tokens": 3562,
+      "game_over": false,
+      "final_fen": "rnb1kbnr/ppp2ppp/8/3qp3/8/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4",
+      "moves": [
+        {
+          "step": 1,
+          "move": "e2e4",
+          "outcome": "accepted"
+        },
+        {
+          "step": 2,
+          "move": "g1f3",
+          "outcome": "accepted"
+        },
+        {
+          "step": 3,
+          "move": "e4d5",
+          "outcome": "accepted"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Three trials only",
+    "Three model steps per trial",
+    "No completed chess games",
+    "No chess-strength measurement",
+    "Raw trajectories retained locally"
+  ]
+}
