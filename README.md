@@ -7,6 +7,25 @@ A hands-on adaptation of [CMU 11-768 Assignment 1: Build an Agent Harness](https
 This project replaces the original assignment's Modal execution infrastructure with a reusable Docker sandbox running inside GitHub Codespaces. It also extends the assignment with OpenCode-driven harness improvement experiments and trajectory- and telemetry-based analysis.
 
 
+## Current snapshot (November 5, 2026)
+
+**Status:** The core Assignment 1 agent harness is implemented on `main` and the local Docker-based adaptation is working. A deterministic chess evaluation runner, multi-trial aggregation, and a recorded three-trial baseline are also on `main`. **The original Assignment 1 is not yet verified complete as a set of required runs and submission artifacts.**
+
+| Area | Current evidence | Boundary |
+| --- | --- | --- |
+| ReAct harness, CodeAgent, context compaction, ChessAgent, skills, and tools | Implemented and covered by repository tests | Private assignment grading is not verified |
+| Modal replacement | `Environment` adapter + disposable Docker task containers in GitHub Codespaces | Not a production-hardened sandbox |
+| Evaluation extension | Offline chess evaluator, batch runner, trial aggregator, baseline summaries | The three-step baseline does not measure full-game skill |
+| OpenCode harness repair | Recorded second attempt passes 2/2 fail-to-pass and 1/1 pass-to-pass checks | A logging repair is not proof of improved gameplay |
+| Codex CLI integration | Developed separately on `feature/codex-sandbox` | **Not part of `main`** |
+| Assignment 1 deliverables | Source and runner commands exist | Final patch/trajectory/report collection has not been verified from this Git checkout |
+
+At commit `eb01f0a`, the recorded verification is **105 passing non-Docker tests and 3 passing Docker integration tests**. The [November 2, 2026 GitHub Actions run](https://github.com/xqzr2000/cmu-11-768-assignment-1/actions/runs/41377559231) passed both the unit and Docker jobs. This describes the state verified at that commit; it is not a guarantee about every subsequent commit.
+
+For the actionable completion checklist, see [Section 15](#15-current-state-completed-work-adaptations-and-open-gaps) and [Section 17](#17-prioritized-next-steps). The [evaluation progress record](experiments/eval-harness/PROGRESS.md) is retained as experiment history, but its old branch handoff is not the current `main` roadmap.
+
+---
+
 ## 1. Project overview
 
 An AI agent is more than a language model. It needs a *harness*: software that lets the model observe its environment, select tools, perform actions, receive results, and continue working toward a goal.
@@ -104,6 +123,19 @@ The central architectural change is:
 **Original:** Agent → Modal environment → remote sandbox
 
 **Adapted:** Agent → `Environment` adapter → local Docker runtime → disposable task container
+
+### Adaptations at a glance
+
+| Original Assignment 1 | Our adaptation on `main` | Why |
+| --- | --- | --- |
+| Modal-managed execution environments | `assignment.env.Environment` backed by `agent_sandbox_runtime` and Docker | Inspect and control sandbox lifecycle locally in Codespaces |
+| Course-provided/default OpenAI-compatible model endpoint | Configurable OpenAI-compatible client; recorded baseline uses `gpt-5-mini` | Run independent experiments using our own model API account |
+| Course-oriented source/testing flow | `uv` workspace, pinned chess source bootstrap, Docker and GitHub Actions tests | Reproduce the environment and catch regressions without a Modal account |
+| ReAct loop, CodeAgent, compaction and ChessAgent | Original agent abstractions preserved, with Docker-specific adapters | Keep the focus on agent behavior rather than replacing the whole harness |
+| No general repeated-trial chess evaluation in the assignment workflow | Offline trajectory scorer, experiment runner, trial aggregation, committed summaries | Measure observed behavior and provide reproducible evidence |
+| No external harness-development coding agent required | Optional OpenCode-based repair experiment | Test whether feedback can improve the harness itself |
+
+The later Codex CLI work remains on `feature/codex-sandbox`; it is **not** part of this table's `main` implementation. Model/API changes and Docker execution are independent choices. Neither should be presented as satisfying the original course's exact model or Modal-specific grading requirements automatically.
 
 We retain the agent-oriented architecture while making the execution infrastructure independently reproducible.
 
@@ -580,7 +612,7 @@ That image installs a pinned OpenCode CLI version and the dependencies needed fo
 
 The task source, requirements, and evaluation records are kept alongside one another.
 
-As of October 2026, we are using the free inference tiers for MiMo-V2.6-Flash and DeepSeek V4.1 Flash provided by OpenCode. However, because the availability and pricing of free models are subject to change, this no-cost inference should not be considered permanent. We will integrate OpenAI's gpt-5-mini once this free lunch is over.
+OpenCode's free-labeled model catalog was accessible during exploration, but a live `opencode/mimo-v2.6-flash-free` request failed with **“Free usage limit reached.”** Model listing is not evidence of inference access. The older trajectory-logging repair experiment succeeded under its recorded conditions; later context-window attempts did not produce a patch. The separate Codex integration work is on `feature/codex-sandbox`, not on `main`.
 
 ## 12. Our trajectory-driven harness improvement experiment
 
@@ -688,34 +720,24 @@ The session notes also identify remaining work, including replaying a live model
 
 ---
 
-## 13. What we learned from Harness²
+## 13. Why we did not adopt Harness²
 
-We explored Google's Harness² approach, which motivated our interest in recursive, feedback-driven harness improvement.
+We investigated Google's **Harness²** ideas because they align with our goal: use real agent trajectories and evaluation feedback to improve the software surrounding an LLM, rather than treating model prompting as the only lever.
 
-The general idea is to collect information from agent runs, identify weaknesses in the surrounding harness, modify that harness, and evaluate the new version. A fully automated loop requires additional orchestration, evaluator integration, and reliable mechanisms for proposing and accepting changes.
+**We decided not to implement Harness² itself.** The external research workflow we explored involved Google Cloud infrastructure and a WorkBuddy-related evaluation arrangement. Reproducing that setup would have added infrastructure and evaluation-provider dependencies to a project whose central adaptation is to run the execution environment ourselves in GitHub Codespaces. Building a faithful autonomous optimization system would also have distracted from completing the core Assignment 1 exercises.
 
-After trying it, we decided **not** to adopt Harness² itself. Two practical constraints drove this:
+Instead, we kept the feedback-driven *method*, with a simpler, inspectable loop:
 
-- It requires a GCP account.
-- Evaluation is done through a partnership with Tencent's WorkBuddy.
+1. Run CodeAgent or ChessAgent with a recorded configuration.
+2. Preserve the trajectory, tool observations, result, and token usage.
+3. Diagnose a specific, reproducible harness failure.
+4. Give a narrowly scoped coding task to OpenCode (or, on a separate branch, Codex).
+5. Inspect the proposed patch; run independent regression tests.
+6. Accept or reject the patch, then compare controlled agent runs if claiming behavioral improvement.
 
-Neither fits our goal of keeping everything under our own control.
+The [trajectory-logging experiment](tasks/chess-trajectory-logging/experiment-records/SESSION_NOTES.md) demonstrates a **manual feedback-and-repair loop**: a first patch failed targeted checks; a revised patch passed them. This does *not* establish a fully automatic self-improving system, a general-purpose judge, or improved chess-playing strength.
 
-For our learning project, we therefore chose a simpler approach:
-
-- Collect trajectories and telemetry.
-- Diagnose an observable failure.
-- Prepare a coding task.
-- Let OpenCode generate a candidate patch.
-- Evaluate the patch using regression tests.
-- Review the results.
-- Repeat if necessary.
-
-This retains the essential learning loop without implementing a full autonomous recursive improvement system or depending on external accounts and evaluation services.
-
-**Our project does not claim to implement Google's complete Harness² framework.**
-
-The abandoned Harness² evaluation and the successful manual OpenCode experiment are separate efforts.
+**Scope decision:** Harness² integration is dropped. A future evaluation-driven project may reuse the underlying lessons, but no Harness² deployment is required to finish Assignment 1.
 
 ## 14. Testing and reproducibility
 
@@ -752,37 +774,47 @@ The project emphasizes:
 
 These principles will also support future evaluation-harness experiments.
 
-## 15. Current status — October 2026
+## 15. Current state: completed work, adaptations, and open gaps
 
-### Implemented and tested
+This section is the source of truth for **what is on `main`**, rather than an aspirational research roadmap. Evidence below comes from committed code, tracked experiment records, and CI. Files in ignored directories such as `artifacts/` may exist in a Codespace but cannot be certified by viewing GitHub alone.
 
-- Local Docker sandbox runtime integrated as a workspace package.
-- GitHub Codespaces development environment with Docker support.
-- OpenAI-compatible inference configuration.
-- Assignment agent runners and sandbox execution adapter.
-- Chess application integration and programmatic tool support.
-- SWE-bench task runner and patch evaluation utilities.
-- Context compaction support and reporting tools.
-- OpenCode-based harness-improvement experiments.
-- Trajectory-logging improvements supported by recorded regression results.
+### 15.1 Completed on `main`
 
-### Explored, with further validation needed
+- **Assignment 1 agent foundations:** Shared ReAct loop, tool-call dispatch and observations, CodeAgent, skills, model-generated context compaction, and ChessAgent with `play_move`, `simulate_move`, `run_python`, and chess skill handling.
+- **Self-hosted sandbox adaptation:** Reusable Docker runtime package, `Environment` compatibility adapter, pinned chess application setup, and Codespaces Docker-in-Docker development workflow.
+- **Test and task runners:** Repository unit tests, Docker integration tests, coding-task patch evaluator, SWE-bench runner and validator, chess runners, and observation-experiment commands.
+- **Evaluation extension:** `scripts/eval_chess_trajectory.py`, `scripts/run_chess_experiment.py`, `scripts/aggregate_chess_trials.py`, `scripts/compare_chess_evaluations.py`, plus test coverage for these tools.
+- **Recorded baseline:** [`baseline-003.json`](experiments/eval-harness/baseline-003.json) contains three `gpt-5-mini` trials, 9/9 accepted moves, zero tool errors, and a 3,628-token mean. **All three trials stopped at the three-step limit; zero games finished.**
+- **OpenCode repair experiment:** The recorded second trajectory-logging patch passed 2/2 fail-to-pass checks, 1/1 pass-to-pass check, and 3/3 targeted public tests. This is evidence of a **logging implementation fix**, not better chess play.
 
-- Chess-agent strategic performance.
-- Observation-format effects across model configurations.
-- Benefits and tradeoffs of context compaction.
-- Generalization of OpenCode improvements beyond individual test cases.
-- Manual Harness²-inspired feedback loops.
+**Verified test checkpoint:** 105 passed / 3 deselected in the repository non-Docker suite, and 3 passed in the Docker suite. Both jobs of the [November 2 CI run](https://github.com/xqzr2000/cmu-11-768-assignment-1/actions/runs/41377559231) completed successfully.
 
-### Not yet implemented
+### 15.2 What is adapted, rather than original
 
-- A unified evaluation framework across chess and coding agents.
-- A systematic labeled trajectory dataset for measuring evaluator accuracy.
-- An OpenAI-based trajectory judge integrated into a reusable evaluation runner.
-- Automatic baseline-versus-improved harness scorecards.
-- A production-ready automated self-improving harness.
+Our **Modal → Docker** change concerns where agent-generated commands execute. Our **model selection** uses a configurable OpenAI-compatible API, with `gpt-5-mini` used for the recorded chess baseline rather than the course's default provider/model. Our **trajectory evaluation and OpenCode workflow** are independent research extensions. These do not replace the official Assignment 1 requirements for actual patches, trajectories, analysis reports, and replayable evidence. The Codex CLI feature is developed separately and is not merged into `main`.
 
----
+We considered Harness² but **dropped implementing it**, for the infrastructure/dependency and scope reasons in [Section 13](#13-why-we-did-not-adopt-harness). Our manual diagnosis → patch → independent test loop is inspired by feedback-driven harness improvement; it is not Harness².
+
+### 15.3 Still needed to complete the original Assignment 1
+
+The code paths exist, but **a working CLI or passing unit test is not the same as a submitted successful run**. The original [Assignment 1 specification](https://github.com/cmu-agents/assignment-1/blob/main/ASSIGNMENT.md) requires evidence for all three parts.
+
+| Priority | Requirement | What to verify or produce |
+| --- | --- | --- |
+| P0 | **Part 1: coding repair** | `artifacts/fix.patch`, `artifacts/part1-trajectory.json`, and a successful independent `make check-part1` run |
+| P0 | **Part 2: SWE-bench compaction** | Passing `django__django-15368.patch` and trajectory, verified compaction event and reduced active context, a no-compaction control run, and `artifacts/token-usage-analysis.md` |
+| P0 | **Part 3: basic chess run** | `artifacts/part3-trajectory.json` and `artifacts/game-result.json` showing a terminal chess state; the existing three-step baseline is not this deliverable |
+| P0 | **Part 3: observation A/B** | Four model/observation combinations with distinct trajectories and results (DeepSeek and GPT-OSS; legal moves shown/hidden), plus `artifacts/observation-experiment.md` |
+| P0 | **Part 3: programmatic chess skill** | `artifacts/part3-python-skill-trajectory.json` demonstrating `invoke_skill`, then `run_python` using `simulate_move` and `play_move` |
+| P1 | **Final submission** | `AI_USAGE.md`, all required artifacts, an independently reviewed ZIP, and no credentials or unrequested files |
+
+**Verification status:** These run artifacts are **not in the tracked `main` tree** because `artifacts/` is Git-ignored. Do not assume they are absent from, or complete in, an existing Codespace. Inventory and validate those local files before paying for any new model inference. The committed Baseline 003 summary does not substitute for the official Part 3 files.
+
+The existing `scripts/package_submission.py` creates a ZIP and prints missing file names rather than failing outright when required artifacts are absent; review its output and the archive contents before declaring a submission complete. Private course tests and original Modal-specific grading behavior have not been established for this independent adaptation.
+
+### 15.4 Research work intentionally not on the completion path
+
+Unified coding/chess evaluation, an LLM trajectory judge, automatic self-improvement, additional provider experiments, and chess-specific context optimization remain **out of scope for completing Assignment 1**. The separate `feature/codex-sandbox` work should be reviewed on its own merits before any merge. We are not pursuing `experiment/chess-context-v2`.
 
 ## 16. Lessons learned
 
@@ -798,68 +830,18 @@ Our major lessons so far are:
 - **6. Harness improvement is an empirical process.** A successful experiment needs a reproducible baseline, a proposed change, and comparable evaluation results.
 
 
-## 17. Next phase — Evaluation-driven agent improvement
+## 17. Prioritized next steps to finish Assignment 1
 
-Our next objective is to turn these lessons into a reusable evaluation framework.
+Do not start a new agent-research branch or repeat model-provider diagnostics until the original Assignment 1 evidence has been audited.
 
-Our next research direction is inspired by [CMU Assignment 2](https://github.com/cmu-agents/assignment-2), which focuses on evaluating agent behavior and outputs.
+1. **Verify the stable baseline.** Use `main`, run `make setup`, `make test`, and `make test-docker`; record the current commit and results. These tests do not call the model by design.
+2. **Inventory ignored local artifacts.** Check `artifacts/` and any saved private experiment outputs against the exact [official submission list](https://github.com/cmu-agents/assignment-1/blob/main/ASSIGNMENT.md#submission). Back up valuable raw trajectories before deleting a Codespace.
+3. **Fill only missing end-to-end evidence.** Prioritize a verified Part 1 chess-app fix, a passing compacted SWE-bench patch with a full-context comparison, a terminal chess run, the four observation A/B runs, and a programmatic skill trajectory. Each live run may incur API charges.
+4. **Finish the required analysis and package.** Produce the token-usage and observation reports, `AI_USAGE.md`, and the ZIP. Inspect `scripts/package_submission.py` output: it currently reports missing artifacts without refusing to create an incomplete ZIP.
+5. **Freeze a reproducible milestone.** Document verified outcomes and remaining limitations, check that no secrets are committed, and only then decide whether independent Codex or evaluation research is worth resuming.
 
-Rather than creating an entirely separate infrastructure stack, we intend to extend the existing repository.
-
-The proposed development branch is:
-
-```
-experiment/eval-harness
-```
-
-The branch will start from the merged `main` baseline.
-
-### Planned architecture
-
-```
-CodeAgent / ChessAgent
-          |
-          v
-     Docker Sandbox
-          |
-          v
- Trajectory + Telemetry
-          |
-          v
- Evaluation Framework
-    |           |
-    v           v
-Python       OpenAI
-Checks       Judge
-    |           |
-    +-----+-----+
-          |
-          v
-    Evaluation Report
-          |
-          v
-    OpenCode Improvement
-          |
-          v
-   Regression Evaluation
-```
-
-We plan to begin with one real chess trajectory and a small deterministic evaluator.
-
-The initial questions will include:
-
-- Did the agent complete the task?
-- Were invalid tool calls made?
-- Was the step limit exceeded?
-- Did the final result match the objective?
-
-We will then explore LLM-based diagnosis, human-labeled evaluation data, precision, recall, Matthews correlation coefficient, and before-and-after harness comparisons.
-
-The ultimate goal is to make harness improvement measurable rather than relying on subjective impressions.
-
-This work is planned and should not be confused with functionality already present in `main`.
-
+**Success condition:** The adapted Assignment 1 source is tested, each required run artifact and report exists and has been independently checked, and the final ZIP is complete. Our Docker/GPT substitution remains a learning adaptation; it should not be described as course-approved or identical to the original Modal execution path.
 
 ---
 
-**Project philosophy:** Build the agent, observe its behavior, evaluate its failures, improve the harness, and measure the results.
+**Project philosophy:** Build the agent, observe its behavior, evaluate failures, and improve the harness based on measured evidence.
