@@ -30,7 +30,13 @@ GPT_OSS_MODEL ?= $(or $(call dotenv,GPT_OSS_MODEL),openai/gpt-oss-120b)
 MODEL_TAG ?= $(or $(subst /,-,$(strip $(MODEL))),default)
 COMPACT_THRESHOLD ?= 6000
 STEPS ?= 200
-CHESS_TIMEOUT ?= 1800
+# Sandbox lifetime for chess runs. The first Part 3.1 attempt lost its server
+# when the original 1800 s expired mid-game, so the default is 2 hours.
+CHESS_TIMEOUT ?= 7200
+# Optional compaction for chess runs (0 = off, the official behaviour).
+CHESS_COMPACT ?= 0
+CHESS_RUN_FLAGS = --sandbox-timeout $(CHESS_TIMEOUT) \
+	$(if $(filter-out 0,$(CHESS_COMPACT)),--compact-threshold-tokens $(CHESS_COMPACT),)
 OBS_NO_LEGAL_TRAJECTORY ?= artifacts/part3-no-legal-moves-$(MODEL_TAG).json
 OBS_LEGAL_TRAJECTORY ?= artifacts/part3-legal-moves-$(MODEL_TAG).json
 OBS_NO_LEGAL_RESULT ?= artifacts/part3-no-legal-moves-$(MODEL_TAG)-result.json
@@ -86,17 +92,17 @@ run-swebench-agent:
 
 run-chess-agent:
 	uv run assignment-play-chess $(MODEL_FLAG) --task $(TASK) --patch $(PATCH) \
-		--step-limit $(STEPS) --sandbox-timeout $(CHESS_TIMEOUT) \
+		--step-limit $(STEPS) $(CHESS_RUN_FLAGS) \
 		--trajectory $(TRAJECTORY) --result $(RESULT)
 
 run-obs-experiment-no-legal-moves:
 	uv run assignment-play-chess $(MODEL_FLAG) --task $(TASK) --patch $(PATCH) \
-		--omit-legal-moves --step-limit $(STEPS) --sandbox-timeout $(CHESS_TIMEOUT) \
+		--omit-legal-moves --step-limit $(STEPS) $(CHESS_RUN_FLAGS) \
 		--trajectory $(OBS_NO_LEGAL_TRAJECTORY) --result $(OBS_NO_LEGAL_RESULT)
 
 run-obs-experiment-legal-moves:
 	uv run assignment-play-chess $(MODEL_FLAG) --task $(TASK) --patch $(PATCH) \
-		--step-limit $(STEPS) --sandbox-timeout $(CHESS_TIMEOUT) \
+		--step-limit $(STEPS) $(CHESS_RUN_FLAGS) \
 		--trajectory $(OBS_LEGAL_TRAJECTORY) --result $(OBS_LEGAL_RESULT)
 
 run-obs-deepseek-no-legal:
@@ -117,7 +123,7 @@ run-chess-sandbox:
 run-python-skill-agent:
 	uv run assignment-play-chess $(MODEL_FLAG) --task $(TASK) --patch $(PATCH) \
 		--programmatic-tools --skills-path tasks/chess-skills \
-		--step-limit $(STEPS) --sandbox-timeout $(CHESS_TIMEOUT) \
+		--step-limit $(STEPS) $(CHESS_RUN_FLAGS) \
 		--trajectory artifacts/part3-python-skill-trajectory.json \
 		--result artifacts/part3-python-skill-result.json
 

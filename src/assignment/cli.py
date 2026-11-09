@@ -181,6 +181,16 @@ def run_swebench_agent() -> None:
     print(f"Trajectory: {trajectory}")
 
 
+def _write_game_result(path: Path, agent: Any, error: BaseException | None) -> None:
+    """Write the last game state; mark it when the run ended without finishing."""
+
+    result = dict(getattr(agent, "last_state", None) or {})
+    if error is not None:
+        result["run_stopped_early"] = f"{type(error).__name__}: {error}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2))
+
+
 def _final_observations(agent: Any) -> list[dict[str, Any]]:
     """The tool messages produced by the agent's last action, in call order.
 
@@ -245,7 +255,10 @@ def run_chess_agent() -> None:
     parser.add_argument("--skills-path", type=Path)
     parser.add_argument("--programmatic-tools", action="store_true")
     parser.add_argument("--omit-legal-moves", action="store_true")
-    parser.add_argument("--sandbox-timeout", type=int, default=1800)
+    parser.add_argument("--sandbox-timeout", type=int, default=1800,
+                        help="sandbox lifetime in seconds; the chess server stops after it")
+    parser.add_argument("--max-unreachable-steps", type=int, default=3,
+                        help="stop after this many consecutive steps the chess server is unreachable")
     # No defaults, as with the code agents: the patch to play with and the log to
     # write are named per run.
     parser.add_argument("--patch", type=Path, help="the Part 1 patch to apply")
@@ -281,16 +294,21 @@ def run_chess_agent() -> None:
             compaction_max_tokens=args.compaction_max_tokens,
             programmatic_tools=args.programmatic_tools,
             include_legal_moves=not args.omit_legal_moves,
+            max_unreachable_steps=args.max_unreachable_steps,
         )
+        error: BaseException | None = None
         try:
             agent.run()
+        except BaseException as exc:
+            error = exc
+            raise
         finally:
             # `Agent.run` saves prompt snapshots, which by construction stop one
             # step short of the final observations. Capture those here, whether
             # the game ended or the step limit did.
             _record_final_observations(trajectory, agent)
-
-    args.result.parent.mkdir(parents=True, exist_ok=True)
-    args.result.write_text(json.dumps(agent.last_state, indent=2))
-    print(f"Result: {args.result}")
-    print(f"Trajectory: {trajectory}")
+            # Always keep the last known position, so a run that stops early
+            # (step limit, lost server) still says where the game stood.
+            _write_game_result(args.result, agent, error)
+            print(f"Result: {args.result}")
+            print(f"Trajectory: {trajectory}")

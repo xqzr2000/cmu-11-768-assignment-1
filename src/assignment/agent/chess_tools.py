@@ -18,6 +18,12 @@ SANDBOX_PYTHON = "/opt/assignment/sandbox_python.py"
 RUN_PYTHON_TIMEOUT = 600
 
 
+# Prefix of the observation returned when the chess server cannot be reached at
+# all (connection refused, timeout, ...). ChessAgent counts these to tell a dead
+# environment apart from an ordinary, recoverable mistake such as an illegal move.
+SERVER_UNREACHABLE = "Could not reach the chess server"
+
+
 def _chess_error(message: str) -> str:
     """Wrap a problem as an observation the model can recover from."""
 
@@ -58,7 +64,7 @@ def _call_api(client: httpx.Client, endpoint: str, payload: dict[str, Any]) -> s
         return _chess_error(f"The server rejected the request: {exc}")
     except httpx.HTTPError as exc:
         return _chess_error(
-            f"Could not reach the chess server ({type(exc).__name__}: {exc})."
+            f"{SERVER_UNREACHABLE} ({type(exc).__name__}: {exc})."
         )
     except Exception as exc:  # noqa: BLE001 - any failure is recoverable
         return _chess_error(f"Chess request failed ({type(exc).__name__}: {exc}).")
