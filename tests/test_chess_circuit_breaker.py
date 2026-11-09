@@ -137,3 +137,15 @@ def test_game_result_is_written_even_when_the_run_stops_early(tmp_path):
     assert data["run_stopped_early"] == "ChessServerUnreachableError: gone"
     _write_game_result(path, Stub(), None)
     assert "run_stopped_early" not in json.loads(path.read_text())
+
+
+def test_programmatic_skill_agent_registers_each_tool_once(monkeypatch, server):
+    """Regression: base Agent and ChessAgent both added invoke_skill (HTTP 400 'Tool names must be unique')."""
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://model.test/v1")
+    client = httpx.Client(base_url="http://chess.test", transport=httpx.MockTransport(server.handler))
+    agent = ChessAgent(FakeEnvironment(), model="m", http_client=client, auto_stop_environment=False,
+                       programmatic_tools=True, skills_path="tasks/chess-skills")
+    names = [tool["function"]["name"] for tool in agent.tools]
+    assert len(names) == len(set(names)), names
+    assert set(names) == {"invoke_skill", "play_move", "simulate_move", "run_python"}

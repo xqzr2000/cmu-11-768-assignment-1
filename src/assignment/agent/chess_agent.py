@@ -122,7 +122,9 @@ class ChessAgent(Agent):
         if programmatic_tools:
             self.tools.append(SIMULATE_MOVE_TOOL)
             self.tools.append(RUN_PYTHON_TOOL)
-        if self.skills:
+        # The base Agent already registers invoke_skill when skills are loaded;
+        # adding it again sends a duplicate tool name, which providers reject.
+        if self.skills and INVOKE_SKILL_TOOL not in self.tools:
             self.tools.append(INVOKE_SKILL_TOOL)
         # run_python always executes in the sandbox, on the port the chess
         # server is listening on there.
