@@ -5,7 +5,7 @@
 > what it asks for, how we adapted it, what's done, why we left Harness² out, and
 > what's left.
 >
-> **Snapshot:** November 9, 2026 · `uv run pytest` → **138 passed, 3 deselected**; Docker suite 3/3 · **All three parts done for learning** with DeepSeek-V4.1-Flash (+ gpt-5-mini for the A/B) · reports in [`docs/reports/`](reports/) · only optional wrap-up left (§5.5)
+> **Final snapshot: Assignment 1 closed on November 9, 2026.** `uv run pytest` → **138 passed, 3 deselected**; Docker suite 3/3 · **All three parts done for learning** with DeepSeek-V4.1-Flash (+ gpt-5-mini for the A/B) · reports in [`docs/reports/`](reports/). The Codespace was deleted after the run artifacts were backed up and downloaded; `artifacts/` isn't in this repository.
 >
 > Done for learning, not for credit: the point values below are kept only as a measure of where the assignment puts its weight.
 
@@ -156,7 +156,7 @@ the client stays OpenAI-compatible and configurable. The recorded baseline used
 | Baseline 003 | `experiments/eval-harness/baseline-003.json` | 3 × `gpt-5-mini` trials, 3 steps each: 9/9 moves accepted, 0 tool errors, mean 3,628 tokens, **0 games finished** |
 | OpenCode harness repair | `tasks/chess-trajectory-logging/`, `src/assignment/opencode_runner.py`, `docs/OPENCODE_BACKEND.md` | A trajectory exposed a logging gap. OpenCode's 2nd attempt, after adding evaluator feedback, passed 2/2 fail-to-pass and 1/1 pass-to-pass |
 | CodeAgent vs OpenCode comparison | `docs/Coding-Agent-Comparison.md`, `scripts/compare_coding_agents.py`, `src/assignment/compare.py` | Same task, model family and grader; our ReAct harness on the paid DeepSeek API vs OpenCode on its free DeepSeek model, which can never use an API key (5 layers of enforcement) |
-| Codex CLI backend (archived) | `docs/Codex-CLI-Exploration.md`, branch `feature/codex-sandbox` (not merged) | Produced one verified 6-line patch, but needed `danger-full-access` inside Docker. Stopped on risk/complexity grounds |
+| Codex CLI backend (retired) | `docs/Codex-CLI-Exploration.md` (the branch was never merged and has been deleted) | Produced one verified 6-line patch, but needed `danger-full-access` inside Docker. Stopped on risk/complexity grounds |
 
 ### 2.4 Rule-compliance notes
 
@@ -366,17 +366,16 @@ hit "Free usage limit reached".
 
 ### 5.4 Explicitly out of scope until the ZIP exists
 
-Harness², merging `feature/codex-sandbox`, a `latest_state` chess context policy, an
+Harness², the Codex CLI backend (retired, branch deleted), a `latest_state` chess context policy, an
 LLM trajectory judge, and more provider experiments.
 
 ---
 
-### 5.5 Remaining (optional wrap-up)
+### 5.5 Closing state and optional follow-ups
 
-1. Copy the final reports over the generated drafts:
-   `cp docs/reports/token-usage-analysis.md docs/reports/observation-experiment.md artifacts/`
-2. *(Optional)* Write `AI_USAGE.md` (Claude for code, PRs and reports; OpenCode and Codex experiments; the Docker/model substitutions; the test-file edits from §2.4), then `make package` and inspect the ZIP.
-3. Back up `artifacts/` (`tar … .private/backups/`), download the newest `.tgz`, then stop or delete the Codespace.
+1. ✅ Final reports are in `docs/reports/` (copy them into `artifacts/` to use them as submission files).
+2. *(Not done, not needed)* Write `AI_USAGE.md` (Claude for code, PRs and reports; OpenCode and Codex experiments; the Docker/model substitutions; the test-file edits from §2.4), then `make package` and inspect the ZIP.
+3. ✅ `artifacts/` backed up to `.private/backups/` and downloaded before the Codespace was deleted. To work on this again, create a new Codespace and restore the `.tgz` (`tar -xzf artifacts-*.tgz`).
 4. *(Optional follow-ups)* Make `reasoning_effort` configurable and compare move quality and speed. Finish a full game with gpt-5-mini plus the legal-move list, the fastest condition at ~4 s per step.
 
 ## 6. Lessons so far

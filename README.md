@@ -7,7 +7,7 @@ A hands-on adaptation of [CMU 11-768 Assignment 1: Build an Agent Harness](https
 This project replaces the original assignment's Modal execution infrastructure with a reusable Docker sandbox running inside GitHub Codespaces. It also extends the assignment with OpenCode-driven harness improvement experiments and trajectory- and telemetry-based analysis.
 
 
-## Current snapshot (November 9, 2026)
+## Current snapshot (November 9, 2026): Assignment 1 closed
 
 **Status: all three parts of Assignment 1 have been built, run and analysed for learning** (not for credit). The agents ran on DeepSeek-V4.1-Flash, plus gpt-5-mini as the second model in the observation experiment, in our own Docker sandbox. The one requirement deliberately skipped is a *finished* chess game.
 
@@ -141,7 +141,7 @@ The central architectural change is:
 | No external harness-development coding agent required | Optional OpenCode-based repair experiment | Test whether feedback can improve the harness itself |
 | — | CodeAgent vs OpenCode (free model, never a paid API) comparison on Part 1 | Separate the harness's contribution from the model's |
 
-The later Codex CLI work remains on `feature/codex-sandbox`; it is **not** part of this table's `main` implementation. Model/API changes and Docker execution are independent choices. Neither should be presented as satisfying the original course's exact model or Modal-specific grading requirements automatically.
+The later Codex CLI experiment was **never merged into `main`**. Its branch has since been deleted, and the [retrospective](docs/Codex-CLI-Exploration.md) is the record. Model/API changes and Docker execution are independent choices. Neither should be presented as satisfying the original course's exact model or Modal-specific grading requirements automatically.
 
 We retain the agent-oriented architecture while making the execution infrastructure independently reproducible.
 
@@ -666,7 +666,7 @@ That image installs a pinned OpenCode CLI version and the dependencies needed fo
 
 The task source, requirements, and evaluation records are kept alongside one another.
 
-OpenCode's free-labeled model catalog was accessible during exploration, but live requests to `opencode/mimo-v2.6-flash-free` (Nov 1) and `opencode/deepseek-v4.1-flash-free` (Nov 9) both failed with **“Free usage limit reached.”** Being listed in the catalog doesn't mean a model will serve requests. The older trajectory-logging repair experiment succeeded under its recorded conditions; later context-window attempts did not produce a patch. The separate Codex integration work is on `feature/codex-sandbox`, not on `main`.
+OpenCode's free-labeled model catalog was accessible during exploration, but live requests to `opencode/mimo-v2.6-flash-free` (Nov 1) and `opencode/deepseek-v4.1-flash-free` (Nov 9) both failed with **“Free usage limit reached.”** Being listed in the catalog doesn't mean a model will serve requests. The older trajectory-logging repair experiment succeeded under its recorded conditions; later context-window attempts did not produce a patch. The separate Codex CLI experiment was never merged and its branch has been deleted; see [`docs/Codex-CLI-Exploration.md`](docs/Codex-CLI-Exploration.md).
 
 ### Free-only mode: OpenCode never uses a paid API
 
@@ -878,7 +878,7 @@ This section is the source of truth for **what is on `main`**, rather than an as
 - **Models:** `deepseek-flash` (DeepSeek-V4.1-Flash, `api.deepseek.com`) instead of the course's DeepSeek-V4-Flash `0731` endpoint, which isn't available to us. gpt-5-mini replaced GPT-OSS-120b in the observation experiment; the files keep the official `gpt-oss` names.
 - **Run settings:** the chess runs used `AGENT_STRIP_REASONING=1` and a 2-hour sandbox. The A/B and skill runs were cut to 15 and 6 steps.
 - **Extensions:** the trajectory evaluation, the OpenCode workflow and the coding-agent comparison are independent research extensions.
-- **Not merged:** the Codex CLI feature is on `feature/codex-sandbox`, not in `main`.
+- **Not merged:** the Codex CLI experiment was retired. Its branch was deleted, and [`docs/Codex-CLI-Exploration.md`](docs/Codex-CLI-Exploration.md) records what it did.
 - **Not used:** Harness², for the reasons in [Section 13](#13-why-we-did-not-adopt-harness). Our manual diagnosis → patch → independent test loop is inspired by feedback-driven harness improvement, but it isn't Harness².
 
 ### 15.3 Status against the original Assignment 1
@@ -896,7 +896,7 @@ The run artifacts are in the Git-ignored `artifacts/` folder of the Codespace an
 
 ### 15.4 Research work intentionally not on the completion path
 
-Unified coding/chess evaluation, an LLM trajectory judge, automatic self-improvement, additional provider experiments, and chess-specific context optimization remain **out of scope for completing Assignment 1**. The separate `feature/codex-sandbox` work should be reviewed on its own merits before any merge. We are not pursuing `experiment/chess-context-v2`.
+Unified coding/chess evaluation, an LLM trajectory judge, automatic self-improvement, additional provider experiments, and chess-specific context optimization remain **out of scope for completing Assignment 1**. The Codex CLI experiment is retired (branch deleted, recorded in [`docs/Codex-CLI-Exploration.md`](docs/Codex-CLI-Exploration.md)). We are not pursuing `experiment/chess-context-v2`.
 
 ## 16. Lessons learned
 

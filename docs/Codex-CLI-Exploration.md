@@ -2,7 +2,7 @@
 
 **Date:** November 5, 2026  
 **Repository:** [xqzr2000/cmu-11-768-assignment-1](https://github.com/xqzr2000/cmu-11-768-assignment-1)  
-**Exploration branch:** `feature/codex-sandbox` (retired as a development direction; not merged into `main`)  
+**Exploration branch:** `feature/codex-sandbox` (retired as a development direction, never merged into `main`, and **deleted** on November 9, 2026. This document is the record.)  
 **Scope:** An independently developed third coding-agent backend for an adapted CMU 11-768 Assignment 1 project  
 **Decision:** Archive the findings, preserve the stable Assignment 1 implementation, and stop investing in this Codex-specific integration.
 
@@ -113,7 +113,7 @@ This document is intentionally a **retrospective**, replacing the feature branch
 - `tests/test_codex_runner.py` and related targeted tests
 - `packages/agent-sandbox-runtime/src/agent_sandbox_runtime/{process.py,sandbox.py}` (credential-forwarding changes)
 
-**Reproducibility markers:** historical task commit `86cd65a`; original integration commits `5c3a367` and `e0b90bc`; nested sandbox/runner development commits `789784d`, `eeaa0d8`, `638fb41`, `b9adf2a`; successful private run ID `codex-chess-20261105T052720929149Z`. Git commit IDs are historical evidence identifiers, but links to feature-only commits may eventually become unavailable after branch deletion.
+**Reproducibility markers:** historical task commit `86cd65a`; original integration commits `5c3a367` and `e0b90bc`; nested sandbox/runner development commits `789784d`, `eeaa0d8`, `638fb41`, `b9adf2a`; successful private run ID `codex-chess-20261105T052720929149Z`. Git commit IDs are historical evidence identifiers. The branch has been deleted (last tip `746f015`), so these feature-only commits are no longer on any branch and may become unavailable.
 
 **Retain:** the report committed to `main`, the independent stable Assignment 1 evaluation baseline, and any locally backed-up, appropriately sanitized records needed for private audit. **Do not retain in public Git:** API keys, raw paid-run event logs/stderr, or sensitive private artifacts. **Do not infer:** production-grade safety, successful context-window optimization, or improved chess-playing performance.
 
