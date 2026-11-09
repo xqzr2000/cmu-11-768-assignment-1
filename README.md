@@ -1,28 +1,33 @@
 # Russell's Take on CMU 11-768 Assignment 1
 
-> Building an AI agent harness with Docker, the OpenAI API, and OpenCode's free models to understand and improve agent systems. I am a student at Pitt and am not registered at CMU for any academic credit.
+> Building an AI agent harness with Docker, OpenAI-compatible model APIs (DeepSeek and OpenAI), and OpenCode to understand and improve agent systems. I am a student at Pitt and am not registered at CMU for any academic credit.
 
 A hands-on adaptation of [CMU 11-768 Assignment 1: Build an Agent Harness](https://github.com/cmu-agents/assignment-1), developed to study how AI agents interact with tools, execute code safely, maintain context, and improve their performance through evaluation feedback.
 
 This project replaces the original assignment's Modal execution infrastructure with a reusable Docker sandbox running inside GitHub Codespaces. It also extends the assignment with OpenCode-driven harness improvement experiments and trajectory- and telemetry-based analysis.
 
 
-## Current snapshot (November 5, 2026)
+## Current snapshot (November 9, 2026)
 
-**Status:** The core Assignment 1 agent harness is implemented on `main` and the local Docker-based adaptation is working. A deterministic chess evaluation runner, multi-trial aggregation, and a recorded three-trial baseline are also on `main`. **The original Assignment 1 is not yet verified complete as a set of required runs and submission artifacts.**
+**Status: all three parts of Assignment 1 have been built, run and analysed for learning** (not for credit). The agents ran on DeepSeek-V4.1-Flash, plus gpt-5-mini as the second model in the observation experiment, in our own Docker sandbox. The one requirement deliberately skipped is a *finished* chess game.
 
-| Area | Current evidence | Boundary |
+| Part | Result | Details |
 | --- | --- | --- |
-| ReAct harness, CodeAgent, context compaction, ChessAgent, skills, and tools | Implemented and covered by repository tests | Private assignment grading is not verified |
-| Modal replacement | `Environment` adapter + disposable Docker task containers in GitHub Codespaces | Not a production-hardened sandbox |
-| Evaluation extension | Offline chess evaluator, batch runner, trial aggregator, baseline summaries | The three-step baseline does not measure full-game skill |
-| OpenCode harness repair | Recorded second attempt passes 2/2 fail-to-pass and 1/1 pass-to-pass checks | A logging repair is not proof of improved gameplay |
-| Codex CLI integration | Developed separately on `feature/codex-sandbox` | **Not part of `main`** |
-| Assignment 1 deliverables | Source and runner commands exist | Final patch/trajectory/report collection has not been verified from this Git checkout |
+| **1. Coding agent repairs the chess app** | ✅ Resolved: FAIL_TO_PASS 1/1, PASS_TO_PASS 9/9 in 13 steps. Repeated 3/3 in a comparison | [§8](#8-running-the-coding-agent) |
+| **2. Context compaction on SWE-bench `django__django-15368`** | ✅ The compacted and full-context runs both resolved (1/1 + 29/29). 2 compactions, −25% total tokens but 2.6× more *uncached* tokens | [§9](#9-context-compaction-and-swe-bench), [token report](docs/reports/token-usage-analysis.md) |
+| **3.2 Observation A/B (board only vs + legal moves)** | ✅ 4 runs × 15 steps: gpt-5-mini 20% → 0% illegal moves; DeepSeek 0% → 0%, but it thought 6× longer with the list | [§10](#10-running-the-chess-agent), [observation report](docs/reports/observation-experiment.md) |
+| **3.4–3.5 Programmatic tools + skill** | ✅ `invoke_skill` → `run_python` searching with `simulate_move` → one `play_move` per snippet | [§10](#10-running-the-chess-agent) |
+| **3.1 Basic game to a terminal state** | ⏭️ Skipped by choice after two partial games. One reached a winning K+Q vs K+B before the sandbox expired | [§10](#10-running-the-chess-agent) |
 
-At commit `eb01f0a`, the recorded verification is **105 passing non-Docker tests and 3 passing Docker integration tests**. The [November 2, 2026 GitHub Actions run](https://github.com/xqzr2000/cmu-11-768-assignment-1/actions/runs/41377559231) passed both the unit and Docker jobs. This describes the state verified at that commit; it is not a guarantee about every subsequent commit.
+| Extension | Result |
+| --- | --- |
+| Harness fixes found by running the agents | A circuit breaker for a lost chess server, a duplicate `invoke_skill` tool, OpenCode quota errors misreported as timeouts, and an API-key leak path in the OpenCode runner |
+| CodeAgent vs OpenCode on Part 1 | CodeAgent 3/3. OpenCode's free tier refused every request ("Free usage limit reached"), so no OpenCode trials ([write-up](docs/Coding-Agent-Comparison.md)) |
+| Harness² | Explored and dropped ([§13](#13-why-we-did-not-adopt-harness)) |
 
-For the actionable completion checklist, see [Section 15](#15-current-state-completed-work-adaptations-and-open-gaps) and [Section 17](#17-prioritized-next-steps). The [evaluation progress record](experiments/eval-harness/PROGRESS.md) is retained as experiment history, but its old branch handoff is not the current `main` roadmap.
+**Tests:** 138 non-Docker tests pass (`uv run pytest`) and 3 Docker integration tests pass (`make test-docker`) on `main` as of Nov 9. Run artifacts live in the Git-ignored `artifacts/` folder, so they are summarised here and in the reports rather than committed.
+
+**Where to read more:** [`docs/Learning-Progress.md`](docs/Learning-Progress.md) is the full learning log: requirements, adaptations, every run and its numbers, and the lessons. [Section 15](#15-current-state-completed-work-adaptations-and-open-gaps) summarises the status, and [Section 17](#17-optional-next-steps) lists optional follow-ups.
 
 ---
 
@@ -47,11 +52,11 @@ The first four capabilities originate from the CMU assignment or its supporting 
 | Development         | GitHub Codespaces / VS Code              | Reproducible cloud development environment               |
 | Language            | Python 3.12                              | Agent orchestration, evaluation, and sandbox integration |
 | Dependencies        | `uv` workspace                           | Manage the assignment and sandbox-runtime packages       |
-| Model inference     | OpenAI-compatible API                    | Generate agent actions and reasoning                     |
+| Model inference     | OpenAI-compatible API (DeepSeek, OpenAI) | Generate agent actions and reasoning                     |
 | Sandbox runtime     | Docker                                   | Execute untrusted task commands in disposable containers |
 | Coding agent        | `CodeAgent`                              | Repair software and solve coding tasks                   |
 | Chess agent         | `ChessAgent`                             | Play chess using tools and programmatic actions          |
-| Coding assistant    | OpenCode                                 | Experiment with harness code improvements                |
+| Coding assistant    | OpenCode (free models, no API key)       | Harness-repair experiment; coding-agent comparison       |
 | Testing             | pytest and GitHub Actions                | Check functionality and regressions                      |
 | Evaluation evidence | JSON trajectories and experiment records | Investigate outcomes and compare candidate changes       |
 
@@ -129,11 +134,12 @@ The central architectural change is:
 | Original Assignment 1 | Our adaptation on `main` | Why |
 | --- | --- | --- |
 | Modal-managed execution environments | `assignment.env.Environment` backed by `agent_sandbox_runtime` and Docker | Inspect and control sandbox lifecycle locally in Codespaces |
-| Course-provided/default OpenAI-compatible model endpoint | Configurable OpenAI-compatible client; recorded baseline uses `gpt-5-mini` | Run independent experiments using our own model API account |
+| Course-provided DeepSeek-V4-Flash endpoint; DeepSeek vs GPT-OSS-120b A/B | Configurable OpenAI-compatible client: `deepseek-flash` (DeepSeek-V4.1-Flash) via DeepSeek's API; gpt-5-mini (OpenAI) as the second A/B model | Run independent experiments with our own API accounts |
 | Course-oriented source/testing flow | `uv` workspace, pinned chess source bootstrap, Docker and GitHub Actions tests | Reproduce the environment and catch regressions without a Modal account |
 | ReAct loop, CodeAgent, compaction and ChessAgent | Original agent abstractions preserved, with Docker-specific adapters | Keep the focus on agent behavior rather than replacing the whole harness |
 | No general repeated-trial chess evaluation in the assignment workflow | Offline trajectory scorer, experiment runner, trial aggregation, committed summaries | Measure observed behavior and provide reproducible evidence |
 | No external harness-development coding agent required | Optional OpenCode-based repair experiment | Test whether feedback can improve the harness itself |
+| — | CodeAgent vs OpenCode (free model, never a paid API) comparison on Part 1 | Separate the harness's contribution from the model's |
 
 The later Codex CLI work remains on `feature/codex-sandbox`; it is **not** part of this table's `main` implementation. Model/API changes and Docker execution are independent choices. Neither should be presented as satisfying the original course's exact model or Modal-specific grading requirements automatically.
 
@@ -309,27 +315,25 @@ Its post-create setup installs dependencies, retrieves the pinned chess applicat
 
 ### Step 2 — Configure your model API
 
-Create a Codespaces secret:
+Keys live **only in Codespaces secrets** (GitHub → Settings → Codespaces → Secrets), each one authorised for this repository:
 
 ```
-OPENAI_API_KEY
+OPENAI_API_KEY      # OpenAI (gpt-5-mini)
+DEEPSEEK_API_KEY    # DeepSeek (deepseek-flash = DeepSeek-V4.1-Flash)
 ```
 
-For a Codespaces secret, authorize access to this repository.
+A Codespace only loads secrets when it starts, so restart it after adding one. We don't use a `.env` file. The code would still read one, but a leftover `.env` quietly chose the model and endpoint for every run, so we removed it. Instead, each run names its endpoint and model explicitly. Settings already in the environment take priority over `.env`.
 
-The project also supports configuration through an ignored `.env` file, if you want to set it up locally.
+For DeepSeek, define this helper once per terminal (shell functions don't survive a restart):
 
-Example:
-
-```
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-5-mini
-OPENAI_MAX_RETRIES=5
+```bash
+ds() { OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY="$DEEPSEEK_API_KEY" OPENAI_MODEL=deepseek-flash "$@"; }
+ds uv run assignment-doctor     # expect: endpoint api.deepseek.com, "Model API accepted the credential"
 ```
 
-Use a model your API account supports, and check current provider pricing before running experiments.
+For OpenAI, use the default endpoint: `OPENAI_MODEL=gpt-5-mini make …`.
 
-Never commit `.env`, API keys, private tokens, or unreviewed raw logs containing sensitive information.
+Check current provider pricing before long runs, especially chess games (see §10). Never commit keys, a `.env` file or unreviewed raw logs.
 
 ### Step 3 — Verify the environment
 
@@ -447,6 +451,12 @@ This distinction is important: **the agent proposing a fix is not the same as in
 
 Model-driven runs consume API tokens. For small exploratory runs, override `STEPS` to limit the number of model interaction steps.
 
+**Our result (Nov 8, `ds make run-code-agent`):** resolved in 13 steps, FAIL_TO_PASS 1/1 and PASS_TO_PASS 9/9.
+
+- **Workflow:** explore → reproduce the HTTP 500 → fix → test edge cases (stalemate, moves after the game ended, reset) → run the full suite → `invoke_skill` → `patch.txt`.
+- **The fix:** play the engine reply only when `self._board.outcome(claim_draw=True) is None`. That's the same check the app already uses for `game_over`, so the two can't disagree.
+- **Repeatability:** three repeat trials made the same fix (3/3) using ~111k input and 5.5k output tokens each ([comparison](docs/Coding-Agent-Comparison.md)).
+
 
 ## 9. Context compaction and SWE-bench
 
@@ -488,6 +498,17 @@ The repository includes token-usage reporting tools:
 make report-tokens
 ```
 
+**Our result (Nov 9):** both runs resolved (1/1 + 29/29) with the same fix, `isinstance(attr, Expression)` → `hasattr(attr, 'resolve_expression')` in `bulk_update()`.
+
+| | Compacted (6,000) | Full context |
+| --- | ---: | ---: |
+| Steps / compactions | 20 / 2 | 19 / 0 |
+| Peak prompt | 5,976 | 11,400 |
+| Total tokens (incl. 10,205 for summaries) | 105,803 | 140,483 |
+| Uncached prompt tokens | 17,748 | 6,870 |
+
+The prompt follows a saw-tooth instead of a ramp, and the working-memory summary kept everything the agent needed. But each compaction rewrites the start of the prompt, which breaks the provider's prompt cache. So compaction cuts input cost only if cached tokens cost more than ~23% of normal input. **Compaction is mainly a capacity tool, not a cost tool.** The full analysis is in [`docs/reports/token-usage-analysis.md`](docs/reports/token-usage-analysis.md).
+
 ## 10. Running the chess agent
 
 The chess agent uses the repaired chess application as its environment.
@@ -507,7 +528,21 @@ artifacts/part3-trajectory.json
 artifacts/game-result.json
 ```
 
-The trajectory records the agent interaction history. The result file records the final observed game state.
+The trajectory records the agent interaction history. The result file records the final observed game state. It is written even when a run stops early, with a `run_stopped_early` field.
+
+**Settings that matter for long games (learned the hard way):**
+
+| Setting | Default | Why |
+| --- | --- | --- |
+| `CHESS_TIMEOUT` | `7200` | The sandbox's lifetime. The original 1800 s expired mid-game in our first attempt |
+| `CHESS_COMPACT=<tokens>` | `0` (off) | Turns on compaction for chess runs |
+| `AGENT_STRIP_REASONING=1` | off | Stops re-sending each move's reasoning. Without it, prompts grew ~10k tokens per move, to 313k |
+| `--max-unreachable-steps` | `3` | Circuit breaker: stop when the chess server is gone instead of retrying |
+
+**What happened when we ran it:**
+
+- **Attempt 1:** 55 of 56 moves were accepted and White reached a winning K+Q vs K+B. Then the 30-minute sandbox expired, and the model kept calling `play_move` into a closed port for 138 steps, using 56M input tokens. That led to the circuit breaker: an illegal move is the model's mistake and goes back to it, but a server that's gone is an environment failure.
+- **Attempt 2:** with the reasoning stripped it was still ~1 minute per step, because DeepSeek's *thinking per move* dominates. We stopped it by choice. Both partial games are kept locally in `artifacts/attempts/`.
 
 The agent uses tools such as `play_move` and `simulate_move`, with optional programmatic Python execution.
 
@@ -527,6 +562,8 @@ The repository includes a chess skill workflow:
 make run-python-skill-agent
 ```
 
+**Our result (6 steps):** `invoke_skill(select-move)` → `run_python` snippets that search two plies with `simulate_move` and commit one `play_move` each. The first move skipped the search, because the skill's opening rule says to play `e2e4` directly. With a material-only evaluation most moves tie, and ties go to the alphabetically first UCI move, so the bishop drifted `f1b5` → `b5a4` → `a4b3`. **A search is only as good as its evaluation.** This run also exposed a bug: `invoke_skill` was registered twice (HTTP 400 "Tool names must be unique"), now fixed.
+
 ### Observation experiments
 
 The assignment also investigates whether providing legal moves in the tool observation affects agent behavior.
@@ -544,6 +581,23 @@ make run-obs-experiment-legal-moves \
 Use distinct artifact names and compare equivalent model configurations to avoid overwriting experimental evidence.
 
 Relevant metrics include legal-move errors, tool-call counts, completion status, and token usage.
+
+**Our result (4 runs × 15 steps; gpt-5-mini runs in the `gpt-oss` slot):**
+
+```bash
+ds make run-obs-deepseek-no-legal STEPS=15 DEEPSEEK_MODEL=deepseek-flash
+ds make run-obs-deepseek-legal    STEPS=15 DEEPSEEK_MODEL=deepseek-flash
+OPENAI_MODEL=gpt-5-mini make run-obs-gpt-oss-no-legal STEPS=15 GPT_OSS_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5-mini make run-obs-gpt-oss-legal    STEPS=15 GPT_OSS_MODEL=gpt-5-mini
+make report-obs
+```
+
+| Model | Board only | + legal moves |
+| --- | --- | --- |
+| gpt-5-mini | 3/15 illegal (20%), 7 s/step | 0/15, 4 s/step |
+| DeepSeek | 0/15, 12 s/step | 0/15, **43 s/step (6× more thinking)** |
+
+gpt-5-mini's three errors were a notation slip (`c2cxd3`), forgetting it had castled (`e1e2`), and a bishop moved sideways (`c4d4`). None came while it was in check. Listing legal moves fixed validity for the weaker model but changed how the stronger one spent its thinking. See [`docs/reports/observation-experiment.md`](docs/reports/observation-experiment.md). Fifteen steps show a direction, not reliable rates.
 
 
 ## 11. Extending the project with OpenCode
@@ -612,7 +666,28 @@ That image installs a pinned OpenCode CLI version and the dependencies needed fo
 
 The task source, requirements, and evaluation records are kept alongside one another.
 
-OpenCode's free-labeled model catalog was accessible during exploration, but a live `opencode/mimo-v2.6-flash-free` request failed with **“Free usage limit reached.”** Model listing is not evidence of inference access. The older trajectory-logging repair experiment succeeded under its recorded conditions; later context-window attempts did not produce a patch. The separate Codex integration work is on `feature/codex-sandbox`, not on `main`.
+OpenCode's free-labeled model catalog was accessible during exploration, but live requests to `opencode/mimo-v2.6-flash-free` (Nov 1) and `opencode/deepseek-v4.1-flash-free` (Nov 9) both failed with **“Free usage limit reached.”** Being listed in the catalog doesn't mean a model will serve requests. The older trajectory-logging repair experiment succeeded under its recorded conditions; later context-window attempts did not produce a patch. The separate Codex integration work is on `feature/codex-sandbox`, not on `main`.
+
+### Free-only mode: OpenCode never uses a paid API
+
+`scripts/run_opencode.py` is **free-only by default**:
+
+- Only `opencode/<id>-free` models are allowed.
+- **No** credential is forwarded into the sandbox. Before this change, `OPENAI_API_KEY` was forwarded for every model except one, which we found and fixed.
+- The runner refuses to start if anything key-like is visible inside the container.
+- OpenCode's error logs are printed, so a quota refusal shows up as `quota_limited` instead of a silent timeout.
+- A paid model needs an explicit `--allow-paid-model`.
+
+Check that a free model actually answers before planning around it: `make opencode-probe`. Details are in [`docs/OPENCODE_BACKEND.md`](docs/OPENCODE_BACKEND.md).
+
+### CodeAgent vs OpenCode comparison
+
+We compared our CodeAgent (DeepSeek API) with OpenCode on its free DeepSeek model, on the same Part 1 task, the same grader and the same model family. The aim was to separate the effect of the *harness* from the model (`scripts/compare_coding_agents.py`, `make compare-*`).
+
+- **CodeAgent:** 3/3 resolved.
+- **OpenCode:** its free tier refused every request, so there were no trials. No credentials reached the sandbox, and nothing fell back to a paid model.
+
+The harness question is still unanswered, but the runner is ready if the free tier becomes available again. See [`docs/Coding-Agent-Comparison.md`](docs/Coding-Agent-Comparison.md).
 
 ## 12. Our trajectory-driven harness improvement experiment
 
@@ -724,7 +799,9 @@ The session notes also identify remaining work, including replaying a live model
 
 We investigated Google's **Harness²** ideas because they align with our goal: use real agent trajectories and evaluation feedback to improve the software surrounding an LLM, rather than treating model prompting as the only lever.
 
-**We decided not to implement Harness² itself.** The external research workflow we explored involved Google Cloud infrastructure and a WorkBuddy-related evaluation arrangement. Reproducing that setup would have added infrastructure and evaluation-provider dependencies to a project whose central adaptation is to run the execution environment ourselves in GitHub Codespaces. Building a faithful autonomous optimization system would also have distracted from completing the core Assignment 1 exercises.
+**We decided not to use Harness² itself.** We went through the Harness² GitHub repo and tried to set it up. Real runs needed a **Google Cloud account (Vertex AI)** and **Tencent's WorkBuddy** benchmark/evaluation setup. Both go against the plan behind this whole adaptation: keep everything under our own control. We removed one external dependency (Modal), and Harness² would have added two more.
+
+Reading the repo also showed that its idea of a harness (system prompt, tools, memory, skills, the orchestration loop) is the same thing Assignment 1 builds by hand. Harness² automates *editing* that harness through Propose → Probe → Compose. The assignment neither asks for nor grades that optimiser.
 
 Instead, we kept the feedback-driven *method*, with a simpler, inspectable loop:
 
@@ -755,6 +832,8 @@ The project provides several levels of verification.
 | `make check-swebench`    | Evaluate a SWE-bench patch               |
 | `make report-tokens`     | Analyze recorded token usage             |
 | `make report-obs`        | Analyze recorded observation experiments |
+| `make opencode-probe`    | Check that the OpenCode free model answers (no API key) |
+| `make compare-report`    | Summarise CodeAgent vs OpenCode trials   |
 
 GitHub Actions is also used to test repository changes.
 
@@ -783,34 +862,37 @@ This section is the source of truth for **what is on `main`**, rather than an as
 - **Assignment 1 agent foundations:** Shared ReAct loop, tool-call dispatch and observations, CodeAgent, skills, model-generated context compaction, and ChessAgent with `play_move`, `simulate_move`, `run_python`, and chess skill handling.
 - **Self-hosted sandbox adaptation:** Reusable Docker runtime package, `Environment` compatibility adapter, pinned chess application setup, and Codespaces Docker-in-Docker development workflow.
 - **Test and task runners:** Repository unit tests, Docker integration tests, coding-task patch evaluator, SWE-bench runner and validator, chess runners, and observation-experiment commands.
-- **Evaluation extension:** `scripts/eval_chess_trajectory.py`, `scripts/run_chess_experiment.py`, `scripts/aggregate_chess_trials.py`, `scripts/compare_chess_evaluations.py`, plus test coverage for these tools.
-- **Recorded baseline:** [`baseline-003.json`](experiments/eval-harness/baseline-003.json) contains three `gpt-5-mini` trials, 9/9 accepted moves, zero tool errors, and a 3,628-token mean. **All three trials stopped at the three-step limit; zero games finished.**
-- **OpenCode repair experiment:** The recorded second trajectory-logging patch passed 2/2 fail-to-pass checks, 1/1 pass-to-pass check, and 3/3 targeted public tests. This is evidence of a **logging implementation fix**, not better chess play.
+- **Evaluation extension:** `scripts/eval_chess_trajectory.py`, `scripts/run_chess_experiment.py`, `scripts/aggregate_chess_trials.py`, `scripts/compare_chess_evaluations.py`, plus test coverage for these tools. The recorded [`baseline-003.json`](experiments/eval-harness/baseline-003.json) has three 3-step `gpt-5-mini` trials (9/9 moves accepted, no game finished).
+- **OpenCode repair experiment:** The recorded second trajectory-logging patch passed 2/2 fail-to-pass checks, 1/1 pass-to-pass check, and 3/3 targeted public tests. That's a **logging fix**, not better chess play.
+- **Harness fixes found by running the agents (Nov 8–9):**
+  - free-only OpenCode mode, closing an API-key leak path (PR #2);
+  - OpenCode quota errors made visible (PR #3);
+  - a chess circuit breaker, plus `game-result.json` written on early stops (PR #6);
+  - a duplicate `invoke_skill` tool (PR #7).
 
-**Verified test checkpoint:** 105 passed / 3 deselected in the repository non-Docker suite, and 3 passed in the Docker suite. Both jobs of the [November 2 CI run](https://github.com/xqzr2000/cmu-11-768-assignment-1/actions/runs/41377559231) completed successfully.
+**Tests:** 138 passed / 3 deselected (non-Docker) and 3/3 Docker integration tests on `main`, Nov 9, 2026.
 
 ### 15.2 What is adapted, rather than original
 
-Our **Modal → Docker** change concerns where agent-generated commands execute. Our **model selection** uses a configurable OpenAI-compatible API, with `gpt-5-mini` used for the recorded chess baseline rather than the course's default provider/model. Our **trajectory evaluation and OpenCode workflow** are independent research extensions. These do not replace the official Assignment 1 requirements for actual patches, trajectories, analysis reports, and replayable evidence. The Codex CLI feature is developed separately and is not merged into `main`.
+- **Execution:** **Modal → Docker**, in GitHub Codespaces.
+- **Models:** `deepseek-flash` (DeepSeek-V4.1-Flash, `api.deepseek.com`) instead of the course's DeepSeek-V4-Flash `0731` endpoint, which isn't available to us. gpt-5-mini replaced GPT-OSS-120b in the observation experiment; the files keep the official `gpt-oss` names.
+- **Run settings:** the chess runs used `AGENT_STRIP_REASONING=1` and a 2-hour sandbox. The A/B and skill runs were cut to 15 and 6 steps.
+- **Extensions:** the trajectory evaluation, the OpenCode workflow and the coding-agent comparison are independent research extensions.
+- **Not merged:** the Codex CLI feature is on `feature/codex-sandbox`, not in `main`.
+- **Not used:** Harness², for the reasons in [Section 13](#13-why-we-did-not-adopt-harness). Our manual diagnosis → patch → independent test loop is inspired by feedback-driven harness improvement, but it isn't Harness².
 
-We considered Harness² but **dropped implementing it**, for the infrastructure/dependency and scope reasons in [Section 13](#13-why-we-did-not-adopt-harness). Our manual diagnosis → patch → independent test loop is inspired by feedback-driven harness improvement; it is not Harness².
+### 15.3 Status against the original Assignment 1
 
-### 15.3 Still needed to complete the original Assignment 1
-
-The code paths exist, but **a working CLI or passing unit test is not the same as a submitted successful run**. The original [Assignment 1 specification](https://github.com/cmu-agents/assignment-1/blob/main/ASSIGNMENT.md) requires evidence for all three parts.
-
-| Priority | Requirement | What to verify or produce |
+| Requirement | Status | Evidence |
 | --- | --- | --- |
-| P0 | **Part 1: coding repair** | `artifacts/fix.patch`, `artifacts/part1-trajectory.json`, and a successful independent `make check-part1` run |
-| P0 | **Part 2: SWE-bench compaction** | Passing `django__django-15368.patch` and trajectory, verified compaction event and reduced active context, a no-compaction control run, and `artifacts/token-usage-analysis.md` |
-| P0 | **Part 3: basic chess run** | `artifacts/part3-trajectory.json` and `artifacts/game-result.json` showing a terminal chess state; the existing three-step baseline is not this deliverable |
-| P0 | **Part 3: observation A/B** | Four model/observation combinations with distinct trajectories and results (DeepSeek and GPT-OSS; legal moves shown/hidden), plus `artifacts/observation-experiment.md` |
-| P0 | **Part 3: programmatic chess skill** | `artifacts/part3-python-skill-trajectory.json` demonstrating `invoke_skill`, then `run_python` using `simulate_move` and `play_move` |
-| P1 | **Final submission** | `AI_USAGE.md`, all required artifacts, an independently reviewed ZIP, and no credentials or unrequested files |
+| **Part 1: coding repair** | ✅ | `fix.patch` + `part1-trajectory.json`; `make check-part1` RESOLVED (1/1, 9/9) |
+| **Part 2: SWE-bench compaction** | ✅ | Compacted patch + trajectory resolved with 2 compaction events; a full-context control also resolved; [token report](docs/reports/token-usage-analysis.md) |
+| **Part 3: basic chess run to a terminal state** | ⏭️ skipped | Two partial games (see §10). Skipping it costs the one `game_over: true` row |
+| **Part 3: observation A/B** | ✅ (15-step runs) | 4 trajectories + results; [observation report](docs/reports/observation-experiment.md) |
+| **Part 3: programmatic chess skill** | ✅ (6-step run) | `part3-python-skill-trajectory.json`: `invoke_skill` → `run_python` + `simulate_move` → `play_move` |
+| **Final submission** | not needed | We aren't submitting. `AI_USAGE.md` and `make package` remain optional |
 
-**Verification status:** These run artifacts are **not in the tracked `main` tree** because `artifacts/` is Git-ignored. Do not assume they are absent from, or complete in, an existing Codespace. Inventory and validate those local files before paying for any new model inference. The committed Baseline 003 summary does not substitute for the official Part 3 files.
-
-The existing `scripts/package_submission.py` creates a ZIP and prints missing file names rather than failing outright when required artifacts are absent; review its output and the archive contents before declaring a submission complete. Private course tests and original Modal-specific grading behavior have not been established for this independent adaptation.
+The run artifacts are in the Git-ignored `artifacts/` folder of the Codespace and its downloaded backups, not in this repository. To use the final reports as artifacts: `cp docs/reports/*.md artifacts/`.
 
 ### 15.4 Research work intentionally not on the completion path
 
@@ -828,19 +910,22 @@ Our major lessons so far are:
 - **4. Trajectories are essential evidence.** Without reliable action and observation logs, diagnosing agent failures becomes difficult.
 - **5. Tests improve coding-agent reliability.** A generated patch should be independently evaluated before integration.
 - **6. Harness improvement is an empirical process.** A successful experiment needs a reproducible baseline, a proposed change, and comparable evaluation results.
+- **7. What stays in the context decides speed and cost.** Re-sending every move's reasoning produced 300k-token prompts. Compaction cut tokens but broke the prompt cache. Measure both.
+- **8. Tell model mistakes apart from environment failures.** Recoverable errors are right for an illegal move and wrong for a dead server. A harness needs a circuit breaker.
+- **9. Observation design changes how a model spends its thinking.** Listing legal moves fixed the weaker model's errors and made the stronger one deliberate 6× longer.
+- **10. A free tier isn't a guarantee.** Probe before planning around free inference, and never let a quota failure fall back to a paid key.
+- **11. Running the system finds bugs that unit tests don't.** Four real harness bugs surfaced only once the agents ran end to end.
 
 
-## 17. Prioritized next steps to finish Assignment 1
+## 17. Optional next steps
 
-Do not start a new agent-research branch or repeat model-provider diagnostics until the original Assignment 1 evidence has been audited.
+Assignment 1 is complete for learning purposes. If we come back to it:
 
-1. **Verify the stable baseline.** Use `main`, run `make setup`, `make test`, and `make test-docker`; record the current commit and results. These tests do not call the model by design.
-2. **Inventory ignored local artifacts.** Check `artifacts/` and any saved private experiment outputs against the exact [official submission list](https://github.com/cmu-agents/assignment-1/blob/main/ASSIGNMENT.md#submission). Back up valuable raw trajectories before deleting a Codespace.
-3. **Fill only missing end-to-end evidence.** Prioritize a verified Part 1 chess-app fix, a passing compacted SWE-bench patch with a full-context comparison, a terminal chess run, the four observation A/B runs, and a programmatic skill trajectory. Each live run may incur API charges.
-4. **Finish the required analysis and package.** Produce the token-usage and observation reports, `AI_USAGE.md`, and the ZIP. Inspect `scripts/package_submission.py` output: it currently reports missing artifacts without refusing to create an incomplete ZIP.
-5. **Freeze a reproducible milestone.** Document verified outcomes and remaining limitations, check that no secrets are committed, and only then decide whether independent Codex or evaluation research is worth resuming.
-
-**Success condition:** The adapted Assignment 1 source is tested, each required run artifact and report exists and has been independently checked, and the final ZIP is complete. Our Docker/GPT substitution remains a learning adaptation; it should not be described as course-approved or identical to the original Modal execution path.
+1. **Make `reasoning_effort` configurable** (it's hard-coded to `"medium"`) and measure thinking effort against move quality and speed. This targets the bottleneck that made full DeepSeek games take over an hour.
+2. **Finish a full game in the fastest condition** (gpt-5-mini with legal moves, ~4 s per step) to tick the terminal-state requirement.
+3. **Re-run the A/B at full length**, with several trials per condition, to turn directions into rates.
+4. **Retry the OpenCode comparison** if its free tier serves requests again (`make opencode-probe`).
+5. **For a full submission:** write `AI_USAGE.md`, copy the reports into `artifacts/`, run `make package` and inspect the ZIP. `scripts/package_submission.py` lists missing files but still builds an incomplete ZIP.
 
 ---
 
