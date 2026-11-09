@@ -5,7 +5,7 @@
 > what it asks for, how we adapted it, what's done, why we left Harness² out, and
 > what's left.
 >
-> **Snapshot:** November 9, 2026 · `uv run pytest` → **130 passed, 3 deselected**; Docker suite 3/3 · **Parts 1–2 done** with DeepSeek-V4.1-Flash · Part 3.1 attempted (sandbox expired mid-game) · **Resume at §5.5**
+> **Snapshot:** November 9, 2026 · `uv run pytest` → **138 passed, 3 deselected**; Docker suite 3/3 · **All three parts done for learning** with DeepSeek-V4.1-Flash (+ gpt-5-mini for the A/B) · reports in [`docs/reports/`](reports/) · only optional wrap-up left (§5.5)
 >
 > Done for learning, not for credit: the point values below are kept only as a measure of where the assignment puts its weight.
 
@@ -16,7 +16,7 @@
 | | Status |
 | --- | --- |
 | **Code (all official TODOs)** | ✅ Implemented and unit-tested on Docker instead of Modal |
-| **Run evidence (patches, trajectories, reports)** | ✅ **Part 1** resolved · ✅ **Part 2** compacted + baseline runs both resolved, token report drafted · 🟡 **Part 3.1** ran out of sandbox time mid-game (winning position) · ⬜ 3.2–3.5. `artifacts/` is Git-ignored: backed up to `.private/backups/` |
+| **Run evidence (patches, trajectories, reports)** | ✅ **Part 1** resolved · ✅ **Part 2** both runs resolved + [token report](reports/token-usage-analysis.md) · ✅ **Part 3.2** A/B (4 × 15 steps) + [observation report](reports/observation-experiment.md) · ✅ **Part 3.5** skill + `run_python` search (6 steps) · ⏭️ **Part 3.1** full game skipped by choice (two partial games kept in `artifacts/attempts/`). `artifacts/` is Git-ignored: backed up to `.private/backups/` |
 | **Extensions** | ✅ Offline chess evaluator + 3-trial baseline, OpenCode trajectory-logging repair, archived Codex CLI experiment · ✅ CodeAgent vs free OpenCode comparison: CodeAgent 3/3, OpenCode blocked by free quota ([doc](Coding-Agent-Comparison.md)) |
 | **Harness²** | ⛔ Looked into, tried setting up, dropped (needs GCP + Tencent WorkBuddy, which goes against our run-everything-ourselves plan) |
 | **To finish** | Do the billable runs in order (Part 1 → 2 → 3), write two short reports and `AI_USAGE.md`, then build the ZIP |
@@ -210,7 +210,20 @@ Key lesson: compaction cut total tokens but **multiplied uncached tokens by 2.6�
 - **Why it was so slow:** the harness keeps each response's `reasoning_content` in the history (`_REASONING_KEYS`), and chess reasoning is long. Prompts grew 880 → 14.5k (step 10) → 208k (step 30) → 313k (step 58), roughly 10k tokens per move. About 31 s per step meant only 58 steps fit in 30 minutes.
 - **Cost:** 56.2M input tokens (99.9% cached) and 304k output, most of it spent after the environment was already gone.
 
-**Not finished:** Part 3 (basic game, A/B, programmatic skill), the observation report, final prose of the token report, `AI_USAGE.md`.
+**Part 3.1 attempt 2 (Nov 9):** with stripped reasoning and compaction it was still ~1 min per step, because DeepSeek's *thinking per move* (not the prompt) dominated. Stopped by choice at step 13: the concepts of 3.1 (strict tool schema, recoverable illegal moves, text-only replies, context cost, environment failure) were already observed. Skipping a finished game costs the one `game_over: true` row (4 of 100 points).
+
+**Part 3.2 observation A/B (Nov 9, 15 steps per run):** [full report](reports/observation-experiment.md).
+
+- gpt-5-mini made **3/15 illegal moves with the board only, 0/15 with legal moves listed**: a notation slip (`c2cxd3`), forgetting it had castled (`e1e2`), and a bishop moved sideways (`c4d4`). None was in check.
+- DeepSeek made 0 illegal moves in both conditions, but with the list it thought **6× longer** (7,817 vs 1,277 output tokens per step, 43 vs 12 s). That's why the full DeepSeek games were so slow.
+
+**Part 3.5 programmatic tools + skill (Nov 9, 6 steps):**
+
+- **Bug found and fixed (PR #7):** `invoke_skill` was registered twice, giving HTTP 400 "Tool names must be unique".
+- **The rerun has the required shape:** `invoke_skill(select-move)` → `run_python` snippets that search with `simulate_move` (2 plies, material evaluation) and commit one `play_move` each. The first move skipped the search, because the skill's Step 1 opening rule says to play `e2e4` directly.
+- **Weakness:** with a material-only evaluation most moves tie at −12, and ties go to the alphabetically first UCI string. So the bishop drifted `f1b5` → `b5a4` → `a4b3`. A search is only as good as its evaluation.
+
+**Not finished (optional):** copy the two reports into `artifacts/`, `AI_USAGE.md`, `make package`.
 
 ---
 
@@ -296,14 +309,14 @@ run on its own, and inspect its output before moving on.
 - [x] `make check-swebench INSTANCE=django__django-15368` passes → **8 pts**
 - [x] Trajectory shows 2 compactions, both cutting the active prompt by >60% → **4 pts**
 - [x] Baseline run with `COMPACT_THRESHOLD=0` and distinct filenames (also resolved, 19 steps)
-- [~] `make report-tokens` → `artifacts/token-usage-analysis.md` generated with real numbers; **rewrite the template "Explanation" and "Trade-offs" prose** around the cache finding above → **4 pts**
+- [x] `make report-tokens`, then the prose rewritten around the cache finding → [`docs/reports/token-usage-analysis.md`](reports/token-usage-analysis.md) (copy to `artifacts/`) → **4 pts**
 
 **3. Part 3 — chess**
 
-- [~] `make run-chess-agent` → `part3-trajectory.json` + `game-result.json` with `game_over: true` → **4 pts**. Attempt 1 failed (sandbox expired, see §3); rerun per §5.5
-- [ ] Four A/B runs → 8 files → **4 pts**
-- [ ] `make report-obs` → `artifacts/observation-experiment.md` (play_move calls, illegal rejections, invalid-move rate, game_over per run) → **4 pts**
-- [ ] `make run-python-skill-agent` → `part3-python-skill-trajectory.json` showing `invoke_skill` → `run_python`(`simulate_move` search) → one `play_move` → **6 pts**
+- [⏭️] `make run-chess-agent` → `game_over: true` → **4 pts**. Skipped by choice after two partial games (attempt 1: sandbox expired at move 56 in a winning position; attempt 2: ~1 min per step, stopped at step 13). Both are in `artifacts/attempts/`
+- [x] Four A/B runs (15 steps each; `deepseek-flash` and gpt-5-mini in the `gpt-oss` slot) → 8 files → **4 pts**
+- [x] `make report-obs`, then the prose rewritten from the trajectories → [`docs/reports/observation-experiment.md`](reports/observation-experiment.md) (copy to `artifacts/`) → **4 pts**
+- [x] `make run-python-skill-agent STEPS=6` → `invoke_skill` → `run_python` (`simulate_move` search) → one `play_move` per snippet → **6 pts** (after fixing the duplicate tool, PR #7)
 
 **4. Submission**
 
@@ -358,18 +371,13 @@ LLM trajectory judge, and more provider experiments.
 
 ---
 
-### 5.5 Resume here (next session)
+### 5.5 Remaining (optional wrap-up)
 
-1. **Start up:** open the Codespace, run `git pull` and `uv run pytest -q`, and redefine the helper (it doesn't survive a restart):
-   `ds() { OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY="$DEEPSEEK_API_KEY" OPENAI_MODEL=deepseek-flash "$@"; }`
-2. **Harness fix (PR #6):** `ChessAgent` now stops after 3 consecutive steps where the chess server is unreachable, after first confirming with one direct state read (`ChessServerUnreachableError`, `--max-unreachable-steps`). Illegal moves never count. The CLI always writes `game-result.json`, adding `run_stopped_early` when a run ends without finishing. The Makefile defaults to `CHESS_TIMEOUT=7200` and takes `CHESS_COMPACT=<tokens>` for chess runs.
-3. **Rerun Part 3.1** without stale reasoning in the history, with compaction as a backstop:
-   ```bash
-   AGENT_STRIP_REASONING=1 ds make run-chess-agent CHESS_COMPACT=20000
-   ```
-   If DeepSeek rejects the stripped history (some "thinking" modes expect the reasoning back during tool use), it fails within seconds at step 2. In that case drop `AGENT_STRIP_REASONING=1` and rely on compaction.
-4. **Then** the A/B runs (`DEEPSEEK_MODEL=deepseek-flash` / `GPT_OSS_MODEL=gpt-5-mini` on the command line, plus the same timeout and stripping options), `make report-obs`, and `make run-python-skill-agent`.
-5. **Finish the Part 2 report prose.**
+1. Copy the final reports over the generated drafts:
+   `cp docs/reports/token-usage-analysis.md docs/reports/observation-experiment.md artifacts/`
+2. *(Optional)* Write `AI_USAGE.md` (Claude for code, PRs and reports; OpenCode and Codex experiments; the Docker/model substitutions; the test-file edits from §2.4), then `make package` and inspect the ZIP.
+3. Back up `artifacts/` (`tar … .private/backups/`), download the newest `.tgz`, then stop or delete the Codespace.
+4. *(Optional follow-ups)* Make `reasoning_effort` configurable and compare move quality and speed. Finish a full game with gpt-5-mini plus the legal-move list, the fastest condition at ~4 s per step.
 
 ## 6. Lessons so far
 
@@ -391,7 +399,9 @@ LLM trajectory judge, and more provider experiments.
 7. **A free tier isn't a guarantee.** OpenCode listed the free DeepSeek model and then refused every request. Probe before planning around free inference, and never let a quota failure fall back to a paid key.
 8. **What stays in the context decides speed and cost, not just quality.** Re-sending every move's reasoning turned a chess game into 300k-token prompts and ~31 s moves. Compaction saves tokens but breaks the prompt cache. Measure both before choosing.
 9. **Tell "the model made a mistake" apart from "the environment is gone".** A recoverable error is right for an illegal move and wrong for a dead server: 138 retries into a closed port taught nothing and cost the most. A harness needs a circuit breaker for environment failures.
-10. **Use a stop rule.** Codex and Harness² were both interesting. Both were dropped
+10. **Observation design changes how the model spends its thinking, not just its error rate.** Listing legal moves fixed gpt-5-mini's illegal moves but made DeepSeek deliberate 6× longer. Measure the cost side of a "helpful" observation too.
+11. **A search is only as good as its evaluation.** The skill's 2-ply search with a material-only score tied almost every move, and the alphabetical tie-break made the bishop wander.
+12. **Use a stop rule.** Codex and Harness² were both interesting. Both were dropped
    once the remaining work was infrastructure rather than learning the assignment's
    concepts.
 
