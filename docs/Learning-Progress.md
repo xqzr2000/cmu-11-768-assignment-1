@@ -362,13 +362,10 @@ LLM trajectory judge, and more provider experiments.
 
 1. **Start up:** open the Codespace, run `git pull` and `uv run pytest -q`, and redefine the helper (it doesn't survive a restart):
    `ds() { OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY="$DEEPSEEK_API_KEY" OPENAI_MODEL=deepseek-flash "$@"; }`
-2. **Decide on the harness fix (optional, recommended):** make `ChessAgent` stop after ~3 consecutive "can't reach the chess server" errors instead of retrying for hundreds of steps, and make the CLI always write `game-result.json`, even when a run ends early.
-3. **Rerun Part 3.1** with all three fixes: no stale reasoning in the history, a 2-hour sandbox, and compaction as a backstop:
+2. **Harness fix (PR #6):** `ChessAgent` now stops after 3 consecutive steps where the chess server is unreachable, after first confirming with one direct state read (`ChessServerUnreachableError`, `--max-unreachable-steps`). Illegal moves never count. The CLI always writes `game-result.json`, adding `run_stopped_early` when a run ends without finishing. The Makefile defaults to `CHESS_TIMEOUT=7200` and takes `CHESS_COMPACT=<tokens>` for chess runs.
+3. **Rerun Part 3.1** without stale reasoning in the history, with compaction as a backstop:
    ```bash
-   AGENT_STRIP_REASONING=1 ds uv run assignment-play-chess --task tasks/chess-terminal-move \
-     --patch artifacts/fix.patch --step-limit 200 --sandbox-timeout 7200 \
-     --compact-threshold-tokens 20000 \
-     --trajectory artifacts/part3-trajectory.json --result artifacts/game-result.json
+   AGENT_STRIP_REASONING=1 ds make run-chess-agent CHESS_COMPACT=20000
    ```
    If DeepSeek rejects the stripped history (some "thinking" modes expect the reasoning back during tool use), it fails within seconds at step 2. In that case drop `AGENT_STRIP_REASONING=1` and rely on compaction.
 4. **Then** the A/B runs (`DEEPSEEK_MODEL=deepseek-flash` / `GPT_OSS_MODEL=gpt-5-mini` on the command line, plus the same timeout and stripping options), `make report-obs`, and `make run-python-skill-agent`.

@@ -13,6 +13,7 @@ from assignment.agent.base import (
     Agent,
 )
 from assignment.agent.chess_tools import (
+    SERVER_UNREACHABLE,
     _chess_error,
     _game_state,
     _invoke_skill,
@@ -33,6 +34,14 @@ from assignment.prompts import (
     PROGRAMMATIC_CHESS_PROMPT,
 )
 from assignment.env import Environment
+
+
+DEFAULT_MAX_UNREACHABLE_STEPS = 3
+_LIVE_BOARD_LOST = "Could not re-read the live board"
+
+
+class ChessServerUnreachableError(RuntimeError):
+    """The chess environment is gone; further model calls cannot help."""
 
 
 def format_chess_state(
@@ -94,6 +103,7 @@ class ChessAgent(Agent):
         programmatic_tools: bool = False,
         python_sandbox_port: int = CHESS_PORT,
         include_legal_moves: bool = True,
+        max_unreachable_steps: int = DEFAULT_MAX_UNREACHABLE_STEPS,
     ):
         super().__init__(
             environment=environment,
@@ -118,6 +128,16 @@ class ChessAgent(Agent):
         # server is listening on there.
         self.python_sandbox_port = python_sandbox_port
         self.include_legal_moves = include_legal_moves
+        # Circuit breaker: an illegal move is the model's mistake and goes back
+        # to it as a recoverable error, but a server that stops answering is
+        # an environment failure no amount of retrying fixes. After this many
+        # consecutive steps where every board call failed to connect, the run
+        # stops instead of re-sending the whole game to the model each step.
+        if max_unreachable_steps < 1:
+            raise ValueError("max_unreachable_steps must be at least 1")
+        self.max_unreachable_steps = max_unreachable_steps
+        self.unreachable_streak = 0
+        self.environment_lost: str | None = None
 
         if http_client is None:
             server_url = getattr(environment, "server_url", "")
@@ -225,7 +245,50 @@ class ChessAgent(Agent):
                 content = _chess_error(f"Tool {name!r} is not handled by this agent.")
 
             messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
+        self._track_server_health(messages)
         return messages
+
+    def _track_server_health(self, messages: list[dict[str, str]]) -> None:
+        """Update the unreachable-server streak after one step's tool calls.
+
+        Observations are returned to the loop as usual, so the trajectory keeps
+        the failing step. The run is stopped before the next model request.
+        """
+
+        contents = [str(m.get("content", "")) for m in messages]
+        lost = [c for c in contents if SERVER_UNREACHABLE in c or _LIVE_BOARD_LOST in c]
+        if not lost:
+            if contents:
+                self.unreachable_streak = 0
+            return
+        self.unreachable_streak += 1
+        if self.unreachable_streak < self.max_unreachable_steps:
+            return
+        # Confirm before giving up: one direct read of the live game.
+        try:
+            _game_state(self.chess_client)
+        except Exception as exc:  # noqa: BLE001 - any failure means it is gone
+            self.environment_lost = (
+                f"The chess server was unreachable for {self.unreachable_streak} "
+                f"consecutive steps and a direct state check failed "
+                f"({type(exc).__name__}: {exc}). Stopping instead of spending "
+                "further model calls."
+            )
+        else:
+            self.unreachable_streak = 0
+
+    def _stop_if_environment_lost(self) -> None:
+        if self.environment_lost:
+            raise ChessServerUnreachableError(self.environment_lost)
+
+    def maybe_compact_context(self) -> bool:
+        # First hook of every loop iteration: stop before a compaction call too.
+        self._stop_if_environment_lost()
+        return super().maybe_compact_context()
+
+    def query_language_model(self) -> dict[str, Any]:
+        self._stop_if_environment_lost()
+        return super().query_language_model()
 
     def _update_state(self, state: dict[str, Any]) -> None:
         self.last_state = state
