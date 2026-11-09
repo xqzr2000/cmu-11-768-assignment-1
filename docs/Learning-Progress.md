@@ -5,7 +5,9 @@
 > what it asks for, how we adapted it, what's done, why we left Harness² out, and
 > what's left.
 >
-> **Snapshot:** November 8, 2026 · `uv run pytest` → **128 passed, 3 deselected**; Docker suite 3/3 · **Part 1 resolved** with DeepSeek-V4.1-Flash
+> **Snapshot:** November 9, 2026 · `uv run pytest` → **130 passed, 3 deselected**; Docker suite 3/3 · **Parts 1–2 done** with DeepSeek-V4.1-Flash · Part 3.1 attempted (sandbox expired mid-game) · **Resume at §5.5**
+>
+> Done for learning, not for credit: the point values below are kept only as a measure of where the assignment puts its weight.
 
 ---
 
@@ -14,7 +16,7 @@
 | | Status |
 | --- | --- |
 | **Code (all official TODOs)** | ✅ Implemented and unit-tested on Docker instead of Modal |
-| **Run evidence (patches, trajectories, reports)** | 🟡 **Part 1 done** (`fix.patch` + `part1-trajectory.json`, `check-part1` RESOLVED). Parts 2–3 not run yet. `artifacts/` is Git-ignored, so back it up |
+| **Run evidence (patches, trajectories, reports)** | ✅ **Part 1** resolved · ✅ **Part 2** compacted + baseline runs both resolved, token report drafted · 🟡 **Part 3.1** ran out of sandbox time mid-game (winning position) · ⬜ 3.2–3.5. `artifacts/` is Git-ignored: backed up to `.private/backups/` |
 | **Extensions** | ✅ Offline chess evaluator + 3-trial baseline, OpenCode trajectory-logging repair, archived Codex CLI experiment · ✅ CodeAgent vs free OpenCode comparison: CodeAgent 3/3, OpenCode blocked by free quota ([doc](Coding-Agent-Comparison.md)) |
 | **Harness²** | ⛔ Looked into, tried setting up, dropped (needs GCP + Tencent WorkBuddy, which goes against our run-everything-ourselves plan) |
 | **To finish** | Do the billable runs in order (Part 1 → 2 → 3), write two short reports and `AI_USAGE.md`, then build the ZIP |
@@ -189,7 +191,26 @@ the [Nov 2 CI run](https://github.com/xqzr2000/cmu-11-768-assignment-1/actions/r
 
 **Run evidence:** Part 1 done on Nov 8 with `deepseek-flash` (DeepSeek-V4.1-Flash, DeepSeek API). 13 steps: explore → reproduce the 500 → guard the engine reply on `outcome(claim_draw=True) is None` → edge-case tests → full suite → `invoke_skill` → `patch.txt`. `check-part1`: FAIL_TO_PASS 1/1, PASS_TO_PASS 9/9, **RESOLVED**.
 
-**Not finished:** the other 15 required artifacts, `AI_USAGE.md`.
+**Part 2 (Nov 9):** both runs fixed the bug the same way: `isinstance(attr, Expression)` → `hasattr(attr, 'resolve_expression')`, so a plain `F()` is no longer wrapped in `Value()`, plus removing the unused import. Both resolved (F2P 1/1, P2P 29/29).
+
+| | Compacted (6,000) | Full context |
+| --- | ---: | ---: |
+| Steps | 20 | 19 |
+| Compactions | 2 (−66%, −61% est.) | 0 |
+| Peak prompt | 5,976 | 11,400 |
+| Total tokens (incl. 10,205 for summaries) | 105,803 | 140,483 (−24.7% for compaction) |
+| Uncached prompt tokens | **17,748** | **6,870** |
+
+Key lesson: compaction cut total tokens but **multiplied uncached tokens by 2.6×**, because rewriting the start of the prompt breaks the provider's prompt cache. On a short run with cheap cache hits it may not be cheaper at all; its real value is on long runs that would outgrow the window. The working-memory summary kept the file and line, both edits, the test results, "lint tools missing" and a next action. Only the baseline re-inserted the bug to prove its new test failed.
+
+**Part 3.1 attempt (Nov 9):** `make run-chess-agent` hit the 200-step limit with no `game-result.json`. What actually happened:
+
+- **Moves 1–56 went fine** (55/56 accepted, one illegal `h1g1`). White promoted and reached **K+Q vs K+B** with `Qa8+`, a winning position.
+- **At 1,790 s the sandbox's 30-minute lifetime (`CHESS_TIMEOUT=1800`) expired.** The next **138** `play_move` calls got `Connection refused`, and the model kept retrying, because a transport error comes back as an ordinary recoverable `<chess_error>`.
+- **Why it was so slow:** the harness keeps each response's `reasoning_content` in the history (`_REASONING_KEYS`), and chess reasoning is long. Prompts grew 880 → 14.5k (step 10) → 208k (step 30) → 313k (step 58), roughly 10k tokens per move. About 31 s per step meant only 58 steps fit in 30 minutes.
+- **Cost:** 56.2M input tokens (99.9% cached) and 304k output, most of it spent after the environment was already gone.
+
+**Not finished:** Part 3 (basic game, A/B, programmatic skill), the observation report, final prose of the token report, `AI_USAGE.md`.
 
 ---
 
@@ -271,15 +292,15 @@ run on its own, and inspect its output before moving on.
 
 **2. Part 2 — compaction on SWE-bench**
 
-- [ ] Compacted run, `COMPACT_THRESHOLD=6000` → `django__django-15368.patch` + `-trajectory.json`
-- [ ] `make check-swebench INSTANCE=django__django-15368` passes → **8 pts**
-- [ ] Check the trajectory shows ≥1 compaction event and a smaller active context → **4 pts**
-- [ ] Baseline run with `COMPACT_THRESHOLD=0` and **distinct** filenames (`-baseline.patch`, `-baseline-trajectory.json`)
-- [ ] `make report-tokens` → write `artifacts/token-usage-analysis.md` (trends + tradeoffs) → **4 pts**
+- [x] Compacted run, `COMPACT_THRESHOLD=6000` → `django__django-15368.patch` + `-trajectory.json` (20 steps)
+- [x] `make check-swebench INSTANCE=django__django-15368` passes → **8 pts**
+- [x] Trajectory shows 2 compactions, both cutting the active prompt by >60% → **4 pts**
+- [x] Baseline run with `COMPACT_THRESHOLD=0` and distinct filenames (also resolved, 19 steps)
+- [~] `make report-tokens` → `artifacts/token-usage-analysis.md` generated with real numbers; **rewrite the template "Explanation" and "Trade-offs" prose** around the cache finding above → **4 pts**
 
 **3. Part 3 — chess**
 
-- [ ] `make run-chess-agent` → `part3-trajectory.json` + `game-result.json` with `game_over: true` → **4 pts**
+- [~] `make run-chess-agent` → `part3-trajectory.json` + `game-result.json` with `game_over: true` → **4 pts**. Attempt 1 failed (sandbox expired, see §3); rerun per §5.5
 - [ ] Four A/B runs → 8 files → **4 pts**
 - [ ] `make report-obs` → `artifacts/observation-experiment.md` (play_move calls, illegal rejections, invalid-move rate, game_over per run) → **4 pts**
 - [ ] `make run-python-skill-agent` → `part3-python-skill-trajectory.json` showing `invoke_skill` → `run_python`(`simulate_move` search) → one `play_move` → **6 pts**
@@ -337,6 +358,22 @@ LLM trajectory judge, and more provider experiments.
 
 ---
 
+### 5.5 Resume here (next session)
+
+1. **Start up:** open the Codespace, run `git pull` and `uv run pytest -q`, and redefine the helper (it doesn't survive a restart):
+   `ds() { OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY="$DEEPSEEK_API_KEY" OPENAI_MODEL=deepseek-flash "$@"; }`
+2. **Decide on the harness fix (optional, recommended):** make `ChessAgent` stop after ~3 consecutive "can't reach the chess server" errors instead of retrying for hundreds of steps, and make the CLI always write `game-result.json`, even when a run ends early.
+3. **Rerun Part 3.1** with all three fixes: no stale reasoning in the history, a 2-hour sandbox, and compaction as a backstop:
+   ```bash
+   AGENT_STRIP_REASONING=1 ds uv run assignment-play-chess --task tasks/chess-terminal-move \
+     --patch artifacts/fix.patch --step-limit 200 --sandbox-timeout 7200 \
+     --compact-threshold-tokens 20000 \
+     --trajectory artifacts/part3-trajectory.json --result artifacts/game-result.json
+   ```
+   If DeepSeek rejects the stripped history (some "thinking" modes expect the reasoning back during tool use), it fails within seconds at step 2. In that case drop `AGENT_STRIP_REASONING=1` and rely on compaction.
+4. **Then** the A/B runs (`DEEPSEEK_MODEL=deepseek-flash` / `GPT_OSS_MODEL=gpt-5-mini` on the command line, plus the same timeout and stripping options), `make report-obs`, and `make run-python-skill-agent`.
+5. **Finish the Part 2 report prose.**
+
 ## 6. Lessons so far
 
 1. **An agent is the model plus the harness.** Prompt layout, tool schemas,
@@ -355,7 +392,9 @@ LLM trajectory judge, and more provider experiments.
 6. **Verify with an independent check.** A patch counts only after a fresh-container
    replay, and a behaviour claim only after controlled agent runs.
 7. **A free tier isn't a guarantee.** OpenCode listed the free DeepSeek model and then refused every request. Probe before planning around free inference, and never let a quota failure fall back to a paid key.
-8. **Use a stop rule.** Codex and Harness² were both interesting. Both were dropped
+8. **What stays in the context decides speed and cost, not just quality.** Re-sending every move's reasoning turned a chess game into 300k-token prompts and ~31 s moves. Compaction saves tokens but breaks the prompt cache. Measure both before choosing.
+9. **Tell "the model made a mistake" apart from "the environment is gone".** A recoverable error is right for an illegal move and wrong for a dead server: 138 retries into a closed port taught nothing and cost the most. A harness needs a circuit breaker for environment failures.
+10. **Use a stop rule.** Codex and Harness² were both interesting. Both were dropped
    once the remaining work was infrastructure rather than learning the assignment's
    concepts.
 
