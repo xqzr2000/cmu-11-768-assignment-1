@@ -4,7 +4,8 @@
 	run-obs-deepseek-no-legal run-obs-deepseek-legal \
 	run-obs-gpt-oss-no-legal run-obs-gpt-oss-legal \
 	run-chess-sandbox instructor-eval-base instructor-eval-gold instructor-eval-patch \
-	run-python-skill-agent report-tokens report-obs package
+	run-python-skill-agent report-tokens report-obs package \
+	opencode-probe compare-import-part1 compare-codeagent compare-opencode compare-report
 
 TASK ?= tasks/chess-terminal-move
 CODE_SKILLS ?= tasks/code-skills
@@ -136,3 +137,27 @@ sandbox-doctor:
 	uv run agent-sandbox doctor
 sandbox-smoke:
 	uv run agent-sandbox smoke
+
+# --- Coding-agent comparison (not graded): CodeAgent (paid API) vs OpenCode (free) ---
+# Outputs go to artifacts/compare/; the graded Part 1 files are never written.
+COMPARE = uv run python scripts/compare_coding_agents.py
+TRIAL ?= 1
+
+# Free quota check for the OpenCode free model; no API key is involved.
+opencode-probe:
+	uv run python scripts/run_opencode.py --probe
+
+# Register the existing Part 1 run (artifacts/fix.patch + trajectory) as CodeAgent trial 1.
+compare-import-part1:
+	$(COMPARE) import-codeagent --trial 1 --patch $(PATCH) --trajectory $(PART1_TRAJECTORY)
+
+# Billable: endpoint/model/key come from the environment (e.g. `ds make compare-codeagent TRIAL=2`).
+compare-codeagent:
+	$(COMPARE) run codeagent --trial $(TRIAL)
+
+# Free: credentials and provider variables are stripped before OpenCode starts.
+compare-opencode:
+	$(COMPARE) run opencode --trial $(TRIAL)
+
+compare-report:
+	$(COMPARE) report --update-doc docs/Coding-Agent-Comparison.md
