@@ -5,7 +5,7 @@
 > what it asks for, how we adapted it, what's done, why we left Harness² out, and
 > what's left.
 >
-> **Snapshot:** November 8, 2026 · `main` @ `0cb0534` · `uv run pytest` → **105 passed, 3 deselected** (re-run for this doc)
+> **Snapshot:** November 8, 2026 · `uv run pytest` → **128 passed, 3 deselected**; Docker suite 3/3 · **Part 1 resolved** with DeepSeek-V4.1-Flash
 
 ---
 
@@ -14,8 +14,8 @@
 | | Status |
 | --- | --- |
 | **Code (all official TODOs)** | ✅ Implemented and unit-tested on Docker instead of Modal |
-| **Run evidence (patches, trajectories, reports)** | ❌ **None exist.** The Codespace that held local `artifacts/` is gone, and `artifacts/` was never tracked in Git |
-| **Extensions** | ✅ Offline chess evaluator + 3-trial baseline, OpenCode trajectory-logging repair, archived Codex CLI experiment |
+| **Run evidence (patches, trajectories, reports)** | 🟡 **Part 1 done** (`fix.patch` + `part1-trajectory.json`, `check-part1` RESOLVED). Parts 2–3 not run yet. `artifacts/` is Git-ignored, so back it up |
+| **Extensions** | ✅ Offline chess evaluator + 3-trial baseline, OpenCode trajectory-logging repair, archived Codex CLI experiment · 🧪 CodeAgent vs free OpenCode comparison ([doc](Coding-Agent-Comparison.md)) |
 | **Harness²** | ⛔ Looked into, tried setting up, dropped (needs GCP + Tencent WorkBuddy, which goes against our run-everything-ourselves plan) |
 | **To finish** | Do the billable runs in order (Part 1 → 2 → 3), write two short reports and `AI_USAGE.md`, then build the ZIP |
 
@@ -153,6 +153,7 @@ the client stays OpenAI-compatible and configurable. The recorded baseline used
 | Offline chess trajectory evaluator, experiment runner, trial aggregator, comparator | `scripts/eval_chess_trajectory.py`, `run_chess_experiment.py`, `aggregate_chess_trials.py`, `compare_chess_evaluations.py` | Deterministic scoring with no LLM judge |
 | Baseline 003 | `experiments/eval-harness/baseline-003.json` | 3 × `gpt-5-mini` trials, 3 steps each: 9/9 moves accepted, 0 tool errors, mean 3,628 tokens, **0 games finished** |
 | OpenCode harness repair | `tasks/chess-trajectory-logging/`, `src/assignment/opencode_runner.py`, `docs/OPENCODE_BACKEND.md` | A trajectory exposed a logging gap. OpenCode's 2nd attempt, after adding evaluator feedback, passed 2/2 fail-to-pass and 1/1 pass-to-pass |
+| CodeAgent vs OpenCode comparison | `docs/Coding-Agent-Comparison.md`, `scripts/compare_coding_agents.py`, `src/assignment/compare.py` | Same task, model family and grader; our ReAct harness on the paid DeepSeek API vs OpenCode on its free DeepSeek model, which can never use an API key (5 layers of enforcement) |
 | Codex CLI backend (archived) | `docs/Codex-CLI-Exploration.md`, branch `feature/codex-sandbox` (not merged) | Produced one verified 6-line patch, but needed `danger-full-access` inside Docker. Stopped on risk/complexity grounds |
 
 ### 2.4 Rule-compliance notes
@@ -186,7 +187,9 @@ the client stays OpenAI-compatible and configurable. The recorded baseline used
 **Verification:** 105 offline tests pass today. The Docker suite (3 tests) passed in
 the [Nov 2 CI run](https://github.com/xqzr2000/cmu-11-768-assignment-1/actions/runs/41377559231).
 
-**Not finished:** none of the 17 required artifacts, no `AI_USAGE.md`.
+**Run evidence:** Part 1 done on Nov 8 with `deepseek-flash` (DeepSeek-V4.1-Flash, DeepSeek API). 13 steps: explore → reproduce the 500 → guard the engine reply on `outcome(claim_draw=True) is None` → edge-case tests → full suite → `invoke_skill` → `patch.txt`. `check-part1`: FAIL_TO_PASS 1/1, PASS_TO_PASS 9/9, **RESOLVED**.
+
+**Not finished:** the other 15 required artifacts, `AI_USAGE.md`.
 
 ---
 
@@ -257,13 +260,14 @@ run on its own, and inspect its output before moving on.
 
 **0. Free setup**
 
-- [ ] New Codespace → `make setup && make doctor && make test && make test-docker`
-- [ ] Configure endpoints (see §5.2) and do one tiny probe per model before a long run
+- [x] Codespace → `make setup && make doctor && make test && make test-docker` (all green)
+- [x] Endpoints: `.env` removed; keys come from Codespaces secrets; DeepSeek via the `ds()` helper (§5.2). A probe confirmed DeepSeek accepts `reasoning_effort="medium"` and its own `reasoning_content` passed back
 
 **1. Part 1 — the chess-app fix** (unblocks Part 3)
 
-- [ ] `make run-code-agent` → `artifacts/fix.patch`, `artifacts/part1-trajectory.json`
-- [ ] `make check-part1` passes → **8 pts**
+- [x] `ds make run-code-agent` → `artifacts/fix.patch`, `artifacts/part1-trajectory.json`
+- [x] `make check-part1` passes → **8 pts**
+- [ ] *(extension)* CodeAgent vs OpenCode comparison, 3 trials each → [Coding-Agent-Comparison.md](Coding-Agent-Comparison.md)
 
 **2. Part 2 — compaction on SWE-bench**
 
@@ -291,36 +295,40 @@ run on its own, and inspect its output before moving on.
 
 | Run | Model | Filenames |
 | --- | --- | --- |
-| Part 1, Part 2 (both runs), Part 3 basic, Part 3 skill | **DeepSeek-V4-Flash** (official default) | as specified |
-| A/B "model 1" | **DeepSeek-V4-Flash** | `part3-*-deepseek*.json` |
+| Part 1, Part 2 (both runs), Part 3 basic, Part 3 skill | **`deepseek-flash`** = DeepSeek-V4.1-Flash via `api.deepseek.com` (the official V4-Flash `0731` build isn't offered there) | as specified |
+| A/B "model 1" | **`deepseek-flash`** | `part3-*-deepseek*.json` |
 | A/B "model 2" | **gpt-5-mini**, in place of GPT-OSS-120b | keep the official `part3-*-gpt-oss*.json` names so the package and report scripts find them, and **state the substitution** in `observation-experiment.md` |
 
 Things to watch:
 
 - **One endpoint per process.** `base.py` reads a single `OPENAI_BASE_URL`/`OPENAI_API_KEY`
-  pair. If DeepSeek and OpenAI are different providers, override both per run, for example
-  `OPENAI_BASE_URL=… OPENAI_API_KEY=… make run-obs-deepseek-legal`. Never put keys on a
-  command line you'll paste into logs.
-- `.env` sets `DEEPSEEK_MODEL` / `GPT_OSS_MODEL`. Point them at the real models:
-  `DEEPSEEK_MODEL` = the provider's DeepSeek-V4-Flash id, `GPT_OSS_MODEL=gpt-5-mini`.
-  `.env.example` currently says `gpt-5-mini` / `gpt-5-nano`, which is misleading.
+  pair, and variables already set beat anything `load_dotenv()` would read. With no `.env`,
+  each run names its endpoint explicitly. For DeepSeek, define this once per terminal:
+  `ds() { OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY="$DEEPSEEK_API_KEY" OPENAI_MODEL=deepseek-flash "$@"; }`,
+  then run `ds make …`. OpenAI runs use the default endpoint and the `OPENAI_API_KEY` secret.
+- **A/B model variables.** The Makefile reads `DEEPSEEK_MODEL` / `GPT_OSS_MODEL` from `.env`
+  (now gone), so pass them on the command line: `ds make run-obs-deepseek-legal DEEPSEEK_MODEL=deepseek-flash`
+  and `OPENAI_MODEL=gpt-5-mini make run-obs-gpt-oss-legal GPT_OSS_MODEL=gpt-5-mini`.
 - `scripts/report_observation_experiment.py` labels the second model **"gpt-oss"**.
   Rename the label or add a note so the report doesn't misname gpt-5-mini.
 
 ### 5.3 Where OpenCode (free models) fits, and where it doesn't
 
-Our OpenCode sandbox can run free OpenCode models. OpenCode 1.19.2's catalog listed
-`opencode/deepseek-v4.1-flash-free`, which hasn't been tried. Last time
-`mimo-v2.6-flash-free` hit "Free usage limit reached".
+Our OpenCode sandbox runs free OpenCode models, and `scripts/run_opencode.py` is now
+**free-only by default** (default model `opencode/deepseek-v4.1-flash-free`, zero credentials
+forwarded, the sandbox checked for keys). Before this change it would have forwarded
+`OPENAI_API_KEY` for any model except `mimo-v2.6-flash-free`. Last time `mimo-v2.6-flash-free`
+hit "Free usage limit reached".
 
-- ✅ **Good for:** harness-improvement experiments like the trajectory-logging task, or
-  checking a patch idea for free before spending on a CodeAgent run.
+- ✅ **Good for:** harness-improvement experiments like the trajectory-logging task, the
+  [CodeAgent vs OpenCode comparison](Coding-Agent-Comparison.md), or checking a patch idea for
+  free before spending on a CodeAgent run.
 - ❌ **Can't replace the graded Part 1/Part 2 runs.** The grader replays **CodeAgent's**
   trajectory (`part1-trajectory.json`, the django trajectory with compaction events).
   OpenCode's JSON event log isn't that format, and an OpenCode patch would show
   OpenCode's work, not our harness's.
-- **Before any long OpenCode run:** do a 90-second "Reply with exactly READY" probe. A
-  model showing up in the catalog doesn't mean you can actually run inference on it.
+- **Before any long OpenCode run:** `make opencode-probe` sends one "Reply with exactly READY"
+  request. A model showing up in the catalog doesn't mean you can actually run inference on it.
 
 ### 5.4 Explicitly out of scope until the ZIP exists
 

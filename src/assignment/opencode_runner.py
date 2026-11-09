@@ -19,6 +19,51 @@ ALLOWED_CREDENTIALS = (
     "OPENAI_API_KEY", "OPENCODE_API_KEY", "ANTHROPIC_API_KEY",
     "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY",
 )
+DEFAULT_FREE_MODEL = "opencode/deepseek-v4.1-flash-free"
+# OpenCode's own free tier: `opencode/<id>-free`. Nothing here needs a key.
+FREE_MODEL_PATTERN = re.compile(r"opencode/[a-z0-9][a-z0-9.\-]*-free")
+# Names that look like a credential. Free-only runs refuse to start when any
+# such variable is visible inside the container.
+CREDENTIAL_NAME_PATTERN = re.compile(
+    r"(API_?KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|ACCESS_KEY|PRIVATE_KEY)", re.I
+)
+PROBE_PROMPT = "Reply with exactly READY. Do not inspect or edit files."
+_QUOTA_MARKERS = ("free usage limit", "usage limit reached", "rate limit", "quota")
+
+
+def is_free_opencode_model(model: str) -> bool:
+    """True only for OpenCode's free-tier models, which need no API key."""
+    return bool(FREE_MODEL_PATTERN.fullmatch(model or ""))
+
+
+def credential_like_names(names) -> list[str]:
+    return sorted({n for n in names if n and CREDENTIAL_NAME_PATTERN.search(n)})
+
+
+def classify_run_output(output: str, returncode: int | None) -> str:
+    """Name what happened in an OpenCode process, for comparison records.
+
+    ``ok`` only means the process exited 0; whether a patch exists and passes
+    the tests is decided separately by the evaluator.
+    """
+    text = (output or "").lower()
+    if any(marker in text for marker in _QUOTA_MARKERS):
+        return "quota_limited"
+    if returncode == 124:
+        return "timeout"
+    if returncode == 0:
+        return "ok"
+    return "error"
+
+
+class OpenCodeRunError(RuntimeError):
+    """The OpenCode process failed; keeps its output so the failure is auditable."""
+
+    def __init__(self, message: str, *, output: str = "", returncode: int | None = None):
+        super().__init__(message)
+        self.output = output
+        self.returncode = returncode
+        self.status = classify_run_output(output, returncode)
 
 # Executed by the testbed's own Python interpreter. Avoids assuming curl,
 # npm, sudo or a writable system Python in arbitrary SWE-bench images.
@@ -130,13 +175,21 @@ class OpenCodeRunner:
                  version: str = DEFAULT_OPENCODE_VERSION,
                  timeout: int = DEFAULT_TIMEOUT,
                  credential_env: dict[str, str] | None = None,
-                 allowed_paths: tuple[str, ...] | None = None):
+                 allowed_paths: tuple[str, ...] | None = None,
+                 free_only: bool = False):
         if not re.fullmatch(r'1\.\d+\.\d+', version):
             raise ValueError('Pin an OpenCode v1 release like 1.19.2')
         if not model or '/' not in model or any(x.isspace() for x in model):
             raise ValueError('Model must be provider/model, e.g. openai/gpt-5-mini')
         if timeout <= 0:
             raise ValueError('Timeout must be positive')
+        if free_only and not is_free_opencode_model(model):
+            raise ValueError(
+                f'free_only allows only OpenCode free models (opencode/<id>-free), not {model!r}'
+            )
+        if free_only and credential_env:
+            raise ValueError('free_only runs must not receive any credentials')
+        self.free_only = free_only
         self.environment = environment
         self.model = model
         self.version = version
@@ -163,6 +216,41 @@ class OpenCodeRunner:
         result = env.execute([OPENCODE_BINARY, '--version'], shell=False,
                              cwd='/tmp', timeout=30)
         return _check(result, 'OpenCode version check').get('output', '').strip()
+
+    def assert_no_credentials_in_container(self) -> None:
+        """Free-only guard: fail if anything credential-like is visible in the sandbox.
+
+        Checks the environment the agent command will actually see (container
+        env plus what this runner passes), not just what the host intended.
+        """
+        result = _check(self.environment.execute(
+            ['env'], shell=False, cwd='/tmp', env=self.credential_env, timeout=30),
+            'Listing sandbox environment')
+        names = [line.split('=', 1)[0] for line in result.get('stdout', '').splitlines() if '=' in line]
+        leaked = credential_like_names(names)
+        if leaked:
+            raise RuntimeError(
+                'Free-only run refused: credential-like variables visible in the sandbox: '
+                + ', '.join(leaked)
+            )
+
+    def probe(self, timeout: int = 120) -> dict:
+        """One trivial request to confirm the model actually serves inference.
+
+        A model appearing in OpenCode's catalog does not mean quota remains.
+        """
+        self.install()
+        if self.free_only:
+            self.assert_no_credentials_in_container()
+        result = self.environment.execute(
+            [OPENCODE_BINARY, 'run', '--model', self.model, '--format', 'json', PROBE_PROMPT],
+            shell=False, cwd='/tmp', timeout=timeout, env=self.credential_env,
+        )
+        output = result.get('output', '')
+        status = classify_run_output(output, result.get('returncode'))
+        if status == 'ok' and 'READY' not in output:
+            status = 'no_answer'
+        return {'status': status, 'returncode': result.get('returncode'), 'output': output}
 
     def _git(self, *argv: str) -> dict:
         return _check(self.environment.execute(['git', *argv], shell=False,
@@ -209,6 +297,8 @@ class OpenCodeRunner:
         if status.strip():
             raise RuntimeError('Task testbed is not clean; use a new disposable sandbox')
         self.install()
+        if self.free_only:
+            self.assert_no_credentials_in_container()
         task_prompt = (
             'Resolve this software engineering issue in the repository at /testbed.\n'
             'Read the code and reproduce the bug, make a minimal source-code fix, '
@@ -226,8 +316,21 @@ class OpenCodeRunner:
             shell=False, cwd='/testbed', timeout=self.timeout,
             env=self.credential_env,
         )
-        _check(result, 'OpenCode run')
-        patch = self._extract_patch()
+        if result.get('returncode') != 0:
+            output = result.get('output', '')
+            raise OpenCodeRunError(
+                f'OpenCode run failed (exit {result.get("returncode")}): '
+                + (result.get('stderr') or output)[-3000:],
+                output=output, returncode=result.get('returncode'),
+            )
+        try:
+            patch = self._extract_patch()
+        except RuntimeError as exc:
+            error = OpenCodeRunError(str(exc), output=result.get('output', ''),
+                                     returncode=result.get('returncode'))
+            if error.status == 'ok':
+                error.status = 'no_patch'
+            raise error from exc
         return OpenCodeRun(patch=patch, output=result.get('output', ''),
                            model=self.model, version=self.version,
                            command_returncode=result['returncode'])
