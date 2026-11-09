@@ -141,3 +141,23 @@ def test_cli_never_forwards_credentials_for_free_models(monkeypatch):
     with pytest.raises(SystemExit, match="allow-paid-model"):
         module.select_credentials("openai/gpt-5-mini", allow_paid=False)
     assert module.select_credentials("openai/gpt-5-mini", allow_paid=True)["OPENAI_API_KEY"] == "FAKE_OPENAI"
+
+
+def test_agent_and_probe_commands_print_provider_errors():
+    """A quota error must reach the output so it is classified, not mistaken for a timeout."""
+    env = SandboxStub()
+    runner = OpenCodeRunner(env, model=DEFAULT_FREE_MODEL, free_only=True)
+    runner.run("Fix it")
+    runner.probe()
+    runs = [c["command"] for c in env.calls if c["command"][0] == OPENCODE_BINARY and "run" in c["command"]]
+    assert len(runs) == 2
+    for command in runs:
+        assert "--print-logs" in command and "--log-level" in command
+
+
+def test_hung_run_with_quota_log_is_quota_limited_not_timeout():
+    log = ('timestamp=... level=ERROR message="stream error" error.error="AI_APICallError: '
+           'Free usage limit reached. Free models work in OpenCode"\n')
+    env = SandboxStub(agent_exit=124, agent_output=log)
+    probe = OpenCodeRunner(env, model=DEFAULT_FREE_MODEL, free_only=True).probe()
+    assert probe["status"] == "quota_limited"

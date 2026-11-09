@@ -28,6 +28,11 @@ CREDENTIAL_NAME_PATTERN = re.compile(
     r"(API_?KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|ACCESS_KEY|PRIVATE_KEY)", re.I
 )
 PROBE_PROMPT = "Reply with exactly READY. Do not inspect or edit files."
+# Without these, OpenCode prints provider errors (e.g. "Free usage limit
+# reached") nowhere and then hangs until the timeout, so a quota failure looks
+# like a silent timeout. WARN keeps ERROR lines without INFO noise; the JSON
+# event parser skips the non-JSON log lines.
+LOG_FLAGS = ('--print-logs', '--log-level', 'WARN')
 _QUOTA_MARKERS = ("free usage limit", "usage limit reached", "rate limit", "quota")
 
 
@@ -243,7 +248,7 @@ class OpenCodeRunner:
         if self.free_only:
             self.assert_no_credentials_in_container()
         result = self.environment.execute(
-            [OPENCODE_BINARY, 'run', '--model', self.model, '--format', 'json', PROBE_PROMPT],
+            [OPENCODE_BINARY, 'run', *LOG_FLAGS, '--model', self.model, '--format', 'json', PROBE_PROMPT],
             shell=False, cwd='/tmp', timeout=timeout, env=self.credential_env,
         )
         output = result.get('output', '')
@@ -311,7 +316,7 @@ class OpenCodeRunner:
         # commands (installation, git, tests). This nevertheless grants the
         # agent access to credentials and should only be used with trusted tasks.
         result = self.environment.execute(
-            [OPENCODE_BINARY, 'run', '--auto', '--agent', 'build',
+            [OPENCODE_BINARY, 'run', *LOG_FLAGS, '--auto', '--agent', 'build',
              '--model', self.model, '--format', 'json', task_prompt],
             shell=False, cwd='/testbed', timeout=self.timeout,
             env=self.credential_env,
