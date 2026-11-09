@@ -43,6 +43,7 @@ uv run python scripts/evaluate_swebench.py django__django-15368 \
 - The original sandbox is a Docker process isolation boundary, **not a hardened security VM**; do not point it at hostile code or grant sensitive credentials.
 - Runs can be costly in tokens and Docker resource usage. Defaults are a 20-minute agent timeout plus setup, a pinned v1 release, and an isolated testbed per attempt.
 - Failed runs (quota, timeout, no patch) still write the run log with a `status` field.
+- OpenCode only reports provider errors such as "Free usage limit reached" in its logs, and then hangs until the timeout. The runner therefore always passes `--print-logs --log-level WARN`, so the error lands in the output and is classified as `quota_limited` rather than `timeout`.
 - Test and fixture changes, `.opencode` state, `AGENTS.md`, and `patch.txt` are excluded from output patches. OpenCode's JSON event output is stored under ignored `artifacts/` and may contain excerpts of the task repository. The runner redacts exact values of forwarded API keys on a best-effort basis; other sensitive content may remain. Do not publish logs without reviewing them.
 - These logs are **not** the assignment's native `CodeAgent` trajectories and do not replace required CMU grading artifacts.
 - This is a smoke-tested-by-unit-tests integration scaffold, **not** a verified end-to-end Docker/API benchmark until you run it in Codespaces.
