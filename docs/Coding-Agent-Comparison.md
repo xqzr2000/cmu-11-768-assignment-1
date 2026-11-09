@@ -1,5 +1,7 @@
 # Coding-Agent Comparison: CodeAgent (paid API) vs OpenCode (free)
 
+> **Result (Nov 9, 2026):** CodeAgent resolved 3/3. OpenCode's free tier refused every request ("Free usage limit reached"), so there were no OpenCode trials. See §6–7.
+>
 > An extension beyond the official assignment, **not graded**. Same task, same model
 > family, same sandbox and the same grader. What changes is the **harness** around the
 > model and **who pays for inference**. The graded Part 1 files (`artifacts/fix.patch`,
@@ -97,23 +99,67 @@ are Git-ignored, so back them up (`.private/backups/`) and download them.
 ## 6. Results
 
 <!-- comparison-results:start -->
-_No comparison trials recorded yet for `chess-terminal-move`. Run the procedure in §4,
-then `make compare-report`._
+Task: `chess-terminal-move` · public tests replayed in a fresh container for every patch.
+
+| Agent | Model | Paid API | Resolved | Mean wall time (s) | Mean steps | Mean input tok | Mean output tok | Mean patch lines | Outcomes |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| CodeAgent (our ReAct harness, paid API) | deepseek-flash | yes | 3/3 | 57.1 | 12.7 | 111,359 | 5,497 | 8 | ok 3 |
+
+### Per trial
+
+| Agent | Trial | Status | Resolved | F2P | P2P | Wall (s) | Steps | Input tok | Output tok | Tool calls | Patch files | +/− |
+| --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| codeagent | 1 | ok | yes | 1/1 | 9/9 | — | 13 | 110,031 | 4,143 | execute×12, invoke_skill×1, send_message×1 | src/chess_app/game.py | +5/−3 |
+| codeagent | 2 | ok | yes | 1/1 | 9/9 | 39.3 | 11 | 89,775 | 4,133 | execute×14, invoke_skill×1, send_message×1 | src/chess_app/game.py | +6/−3 |
+| codeagent | 3 | ok | yes | 1/1 | 9/9 | 75.0 | 14 | 134,271 | 8,214 | execute×16, invoke_skill×1, send_message×1 | src/chess_app/game.py | +4/−3 |
+
 <!-- comparison-results:end -->
 
-## 7. Interpretation guide
 
-Fill this in after the runs, from the records rather than impressions:
+**OpenCode: no usable trials.** All three planned OpenCode trials were blocked before
+they started. The free model never produced a token, so there's nothing to grade and no
+`run.json` was recorded.
 
-- **Outcome:** did both resolve 3/3? If OpenCode had `quota_limited` trials, report them
-  separately from real failures, since they reflect the free tier, not the agent.
-- **Effort:** steps, tool calls and tokens per resolved trial. A large gap in input
-  tokens usually comes from system-prompt and tool-schema size, not the task.
-- **Patch content:** do both guard the engine reply on the game outcome, as CodeAgent
-  trial 1 did with `outcome(claim_draw=True) is None`? Does either touch more than
-  `game.py` or add tests? (OpenCode's test edits are filtered out of its patch.)
-- **What it says about our harness:** where did our minimal three-tool ReAct loop
-  match a full product, and where did it lose?
+| Check (Nov 9, 2026, ~06:36 UTC, OpenCode 1.19.2) | Result |
+| --- | --- |
+| Credentials inside the sandbox | none (`env` showed no `*_KEY` / `*_TOKEN`; `GPG_KEY` is the Python image's signing key) |
+| `opencode/deepseek-v4.1-flash-free` in the catalog | listed (`opencode models opencode`) |
+| First model request | `AI_APICallError: Free usage limit reached …` ~1 s after the request, then retries and a hang until the timeout |
+| Earlier attempt (Nov 1, `opencode/mimo-v2.6-flash-free`) | the same error |
+
+The same refusal on two different free models, a week apart, suggests the limit isn't
+per model. Whether it's tied to the client, the network (Codespaces) or something else
+can't be determined from our side.
+
+## 7. Findings
+
+1. **CodeAgent is reliable on this task: 3/3 resolved, and the same fix every time.**
+   Every trial guarded the engine reply with `self._board.outcome(claim_draw=True) is None`.
+   That's the same check the app uses for `game_over`, so the two can't disagree. The
+   trials differed only in comments and in how many edge cases they checked themselves
+   (stalemate, insufficient material, moves after the game ended), which accounts for
+   the step range of 11–14.
+2. **Our workflow shape held up.** Each trial explored, reproduced the HTTP 500, edited,
+   verified, ran the full suite, then `invoke_skill` → `patch.txt` → `send_message`.
+   In trials 2–3 the skill was loaded in step 1, alongside the first `execute` call.
+3. **Input tokens dominate.** About 111k input vs 5.5k output per run (≈20:1), or roughly
+   8.8k input tokens per step. That's because every request re-sends the full history.
+   This is the cost that Part 2's context compaction targets.
+4. **The harness question is unanswered.** With no OpenCode trial, this experiment can't
+   say whether our three-tool loop matches a full coding-agent product.
+5. **What we learned instead:**
+   - *Being listed isn't being available.* A free model can appear in the catalog and
+     still refuse every request. A "free" agent's reliability includes the provider's
+     quota, which we don't control.
+   - *Policy beat convenience.* The run stopped rather than falling back to a paid model,
+     and no credential reached the sandbox. That's the free-only design working.
+   - *The tooling improved.* Building the comparison exposed a real credential leak path
+     in `run_opencode.py` (fixed in PR #2) and a failure mode where quota errors showed up
+     as silent 20-minute timeouts (fixed in PR #3 with `--print-logs`).
+
+**Status: closed as recorded.** The runner is ready. If the free tier becomes usable
+again, `make opencode-probe` and then `make compare-opencode TRIAL=1..3` followed by
+`make compare-report` will add the OpenCode rows without changing anything else.
 
 ## 8. Limitations
 

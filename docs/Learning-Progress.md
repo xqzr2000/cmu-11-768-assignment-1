@@ -15,7 +15,7 @@
 | --- | --- |
 | **Code (all official TODOs)** | ✅ Implemented and unit-tested on Docker instead of Modal |
 | **Run evidence (patches, trajectories, reports)** | 🟡 **Part 1 done** (`fix.patch` + `part1-trajectory.json`, `check-part1` RESOLVED). Parts 2–3 not run yet. `artifacts/` is Git-ignored, so back it up |
-| **Extensions** | ✅ Offline chess evaluator + 3-trial baseline, OpenCode trajectory-logging repair, archived Codex CLI experiment · 🧪 CodeAgent vs free OpenCode comparison ([doc](Coding-Agent-Comparison.md)) |
+| **Extensions** | ✅ Offline chess evaluator + 3-trial baseline, OpenCode trajectory-logging repair, archived Codex CLI experiment · ✅ CodeAgent vs free OpenCode comparison: CodeAgent 3/3, OpenCode blocked by free quota ([doc](Coding-Agent-Comparison.md)) |
 | **Harness²** | ⛔ Looked into, tried setting up, dropped (needs GCP + Tencent WorkBuddy, which goes against our run-everything-ourselves plan) |
 | **To finish** | Do the billable runs in order (Part 1 → 2 → 3), write two short reports and `AI_USAGE.md`, then build the ZIP |
 
@@ -267,7 +267,7 @@ run on its own, and inspect its output before moving on.
 
 - [x] `ds make run-code-agent` → `artifacts/fix.patch`, `artifacts/part1-trajectory.json`
 - [x] `make check-part1` passes → **8 pts**
-- [ ] *(extension)* CodeAgent vs OpenCode comparison, 3 trials each → [Coding-Agent-Comparison.md](Coding-Agent-Comparison.md)
+- [x] *(extension)* CodeAgent vs OpenCode comparison → [Coding-Agent-Comparison.md](Coding-Agent-Comparison.md): CodeAgent 3/3 resolved (same `outcome()` guard each time, ~111k input / 5.5k output tokens per run); OpenCode's free tier refused every request ("Free usage limit reached"), so it's recorded and closed
 
 **2. Part 2 — compaction on SWE-bench**
 
@@ -354,7 +354,8 @@ LLM trajectory judge, and more provider experiments.
    Codespace**.
 6. **Verify with an independent check.** A patch counts only after a fresh-container
    replay, and a behaviour claim only after controlled agent runs.
-7. **Use a stop rule.** Codex and Harness² were both interesting. Both were dropped
+7. **A free tier isn't a guarantee.** OpenCode listed the free DeepSeek model and then refused every request. Probe before planning around free inference, and never let a quota failure fall back to a paid key.
+8. **Use a stop rule.** Codex and Harness² were both interesting. Both were dropped
    once the remaining work was infrastructure rather than learning the assignment's
    concepts.
 
